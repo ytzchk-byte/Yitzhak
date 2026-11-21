@@ -1,7 +1,8 @@
 // Offline cache for Napkin CAD. Bump VERSION when files change.
-const VERSION = 'napkin-v1';
+const VERSION = 'napkin-v2';
 const FILES = [
   './', './index.html', './manifest.webmanifest', './icon.svg',
+  './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png',
   './vendor/three.module.min.js', './vendor/addons/controls/OrbitControls.js', './vendor/addons/utils/BufferGeometryUtils.js',
   './vendor/three-mesh-bvh.module.js', './vendor/three-bvh-csg.module.js',
 ];

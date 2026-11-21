@@ -34,14 +34,24 @@ python3 -m http.server 8000
 # then open http://localhost:8000 on your phone (same Wi-Fi: http://<your-computer-ip>:8000)
 ```
 
-To have it on the go, host the repository with **GitHub Pages** (Settings → Pages → deploy from branch, root folder). Open the URL on your phone and use **Add to Home Screen**. After the first visit it works offline.
+### Offline on your phone (GitHub Pages)
+
+1. GitHub Pages needs a **public** repository on a free account (private repositories need GitHub Pro or a paid plan).
+2. Repository **Settings → Pages → Build and deployment**: Source **Deploy from a branch**, pick the branch with the app and the **/ (root)** folder, then **Save**.
+3. After a minute the site is live at `https://<user>.github.io/<repo>/`.
+4. Open that link on your phone once while online:
+   - **iPhone (Safari):** Share → **Add to Home Screen**.
+   - **Android (Chrome):** ⋮ menu → **Install app** / **Add to Home screen**.
+5. Launch it from the home-screen icon. It now works with no connection; your sketches and parts are saved on the phone.
+
+When the app is updated, opening it once while online fetches the new version.
 
 ## Files
 
 | Path | What it is |
 | --- | --- |
 | `index.html` | The whole app: UI, sketch engine, handwriting reader, 3D workspace, exporters |
-| `sw.js`, `manifest.webmanifest`, `icon.svg` | Offline support and home-screen install |
+| `sw.js`, `manifest.webmanifest`, `icon*.png`, `icon.svg` | Offline support and home-screen install |
 | `vendor/` | three.js r160, OrbitControls, BufferGeometryUtils, three-mesh-bvh, three-bvh-csg (MIT licences included) |
 
 ## How the pieces work
