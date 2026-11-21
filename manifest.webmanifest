@@ -1,0 +1,14 @@
+{
+  "name": "Napkin CAD",
+  "short_name": "Napkin CAD",
+  "description": "Sketch by hand, add dimensions, turn it into a 3D part and export STL.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#fafbfd",
+  "theme_color": "#1f4fd1",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
