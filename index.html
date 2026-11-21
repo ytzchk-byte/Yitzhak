@@ -568,8 +568,9 @@ let doc = { sketch: newSketch(), stash: null, parts: [] };
 let underlay = null; let underlayImg = null;
 const hist = { undo: [], redo: [], cur: null };
 const serialize = () => JSON.stringify({ sketch: doc.sketch, stash: doc.stash, parts: doc.parts.map(partData) });
+let commits = 0;
 function commit() {
-  hist.undo.push(hist.cur); if (hist.undo.length > 80) hist.undo.shift();
+  commits++; hist.undo.push(hist.cur); if (hist.undo.length > 80) hist.undo.shift();
   hist.cur = serialize(); hist.redo = []; persist(); updateUndo(); updateStatus(); updateFab();
 }
 function loadDoc(d) {
@@ -603,7 +604,7 @@ function readTokens() {
 let tool = 'draw';
 let sel = null;          // {kind:'vertex'|'edge'|'shape', id, i}
 let focus = null;        // highlighted target while a number sheet is open
-const live = { ink: null, preview: null, handwriting: [], inkSource: 'dim' };
+const live = { ink: null, preview: null, handwriting: [], inkSource: 'dim', doomed: null };
 let dimHits = [];        // label hit boxes rebuilt every frame
 let rq = 0;
 function render() { if (!rq) rq = requestAnimationFrame(() => { rq = 0; drawSketch(); }); }
@@ -874,6 +875,13 @@ function drawSketch() {
   for (const s of live.handwriting) ink(s, tok.markup, 3);
   if (live.ink) ink(live.ink, tool === 'dim' ? tok.markup : tok.ink, tool === 'dim' ? 3 : 2.5);
   if (eraseTrail.length) ink(eraseTrail, tok.danger, 10);
+  if (live.doomed) {
+    c.save(); c.globalAlpha = 0.75; c.strokeStyle = tok.danger; c.lineWidth = 6; c.lineCap = 'round'; c.lineJoin = 'round';
+    for (const sh of live.doomed.shapes) { c.beginPath(); addPath(c, sh); c.stroke(); }
+    const keys = new Set(live.doomed.dims.map(dimKey)); c.lineWidth = 2;
+    for (const h of dimHits) if (keys.has(dimKey(h))) { roundRect(c, h.x0, h.y0, h.x1 - h.x0, h.y1 - h.y0, 6); c.stroke(); }
+    c.restore();
+  }
 }
 function addPath(c, sh) {
   if (sh.type === 'circle') { const q = toS(sh.c); c.moveTo(q[0] + sh.r * view.s, q[1]); c.arc(q[0], q[1], sh.r * view.s, 0, Math.PI * 2); return; }
@@ -886,7 +894,7 @@ function label(c, at, text, color, angle = 0, bg = true, size = 12, hit = null) 
   const w = c.measureText(text).width;
   if (bg) { c.fillStyle = tok.paper; c.globalAlpha = 0.92; roundRect(c, -w / 2 - 4, -size / 2 - 3, w + 8, size + 6, 4); c.fill(); c.globalAlpha = 1; }
   c.fillStyle = color; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(text, 0, 0.5); c.restore();
-  if (hit) { const e = Math.max(w, size) / 2 + 8; const ex = Math.abs(Math.cos(angle)) * (w / 2 + 6) + Math.abs(Math.sin(angle)) * (size / 2 + 6), ey = Math.abs(Math.sin(angle)) * (w / 2 + 6) + Math.abs(Math.cos(angle)) * (size / 2 + 6); dimHits.push({ ...hit, x0: at[0] - Math.max(ex, 14), x1: at[0] + Math.max(ex, 14), y0: at[1] - Math.max(ey, 14), y1: at[1] + Math.max(ey, 14), e }); }
+  if (hit) { const e = Math.max(w, size) / 2 + 8; const ex = Math.abs(Math.cos(angle)) * (w / 2 + 6) + Math.abs(Math.sin(angle)) * (size / 2 + 6), ey = Math.abs(Math.sin(angle)) * (w / 2 + 6) + Math.abs(Math.cos(angle)) * (size / 2 + 6); dimHits.push({ ...hit, x0: at[0] - Math.max(ex, 14), x1: at[0] + Math.max(ex, 14), y0: at[1] - Math.max(ey, 14), y1: at[1] + Math.max(ey, 14), e, ang: angle, cx: at[0], cy: at[1], tw: w, th: size, tight: { x0: at[0] - ex + 2, x1: at[0] + ex - 2, y0: at[1] - ey + 2, y1: at[1] + ey - 2 } }); }
 }
 function roundRect(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
 function outwardNormal(sh, i) {
@@ -1376,6 +1384,8 @@ sk.cv.addEventListener('pointerdown', (e) => {
   }
   if (ptrs.size === 2) { if (action && action.cancel) action.cancel(); action = null; startPinch(); return; }
   if (ptrs.size > 2) { pinch = null; return; }
+  const penErase = e.pointerType === 'pen' && (e.button === 5 || e.button === 2 || (e.buttons & 32) || (e.buttons & 2));
+  if (penErase) { action = Tools.erase.down(p, e); return; }
   const panOnly = e.button === 1 || e.button === 2 || (penSeen && e.pointerType === 'touch');
   if (panOnly) { action = panAction(p); return; }
   action = Tools[tool].down(p, e) || null;
@@ -1447,9 +1457,10 @@ const dimHitAt = (q) => dimHits.filter((h) => q[0] >= h.x0 && q[0] <= h.x1 && q[
 const isTap = (p0, p, t0) => V.dist(p0, p) < 8 && performance.now() - t0 < 450;
 
 // Gesture: scribble (back-and-forth) over something deletes it.
+// Gesture: scribble (back-and-forth) over something deletes it.
 function isScratch(stroke) {
   const b = bbox(stroke); const diag = Math.hypot(b.w, b.h); const L = pathLen(stroke);
-  if (diag < 22 || L < 3.6 * diag) return false;
+  if (diag < 18 || L < 2.8 * diag) return false;
   const rev = (axis, ext) => {
     if (ext < 10) return 0; let dir = 0, anchor = stroke[0][axis], count = 0;
     for (const p of stroke) { const d = p[axis] - anchor; if (dir >= 0 && d < -0.3 * ext) { if (dir > 0) count++; dir = -1; anchor = p[axis]; } else if (dir <= 0 && d > 0.3 * ext) { if (dir < 0) count++; dir = 1; anchor = p[axis]; } else if ((dir > 0 && d > 0) || (dir < 0 && d < 0)) anchor = p[axis]; }
@@ -1457,22 +1468,78 @@ function isScratch(stroke) {
   };
   return Math.max(rev(0, b.w), rev(1, b.h)) >= 3;
 }
-function scratchDelete(stroke) {
-  const b = bbox(stroke); const r = { x0: b.x0 - 4, y0: b.y0 - 4, x1: b.x1 + 4, y1: b.y1 + 4 };
-  const dimsHit = dimHits.filter((h) => !(h.x1 < r.x0 || h.x0 > r.x1 || h.y1 < r.y0 || h.y0 > r.y1));
-  const real = dimsHit.filter((h) => (h.kind === 'edge' ? byId(h.id)?.dims[h.i] != null : h.kind === 'dia' ? byId(h.id)?.dim != null : h.kind === 'vang' ? (byId(h.id)?.vangs || {})[h.i] != null : true));
-  if (real.length) {
-    real.forEach(removeDimHit); commit(); render(); buzz(15);
-    toast(real.length === 1 ? 'Dimension removed' : `${real.length} dimensions removed`, [{ label: 'Undo', fn: undo }]); return;
+const isRealDim = (h) => { const sh = byId(h.id); if (!sh) return false; return h.kind === 'edge' ? sh.dims[h.i] != null : h.kind === 'dia' ? sh.dim != null : h.kind === 'vang' ? (sh.vangs || {})[h.i] != null : h.kind === 'ang' ? (sh.angs || {})[h.i] != null : true; };
+const dimKey = (h) => `${h.kind}|${h.id}|${h.i ?? ''}|${h.j ?? ''}`;
+const boxHits = (r, h) => !(h.x1 < r.x0 || h.x0 > r.x1 || h.y1 < r.y0 || h.y0 > r.y1);
+// What a delete gesture over screen rect r would remove: whatever is closest to the gesture's centre
+// (a dimension label, or a shape whose outline passes through r), plus anything of the same kind about as close.
+function targetsIn(r) {
+  const c = [(r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2]; const cands = [];
+  const boxDist = (b) => Math.hypot(Math.max(b.x0 - c[0], 0, c[0] - b.x1), Math.max(b.y0 - c[1], 0, c[1] - b.y1));
+  for (const h of dimHits) if (boxHits(r, h.tight) && isRealDim(h)) cands.push({ dim: h, d: boxDist(h.tight) + 0.5 });
+  const inR = (q) => q[0] > r.x0 && q[0] < r.x1 && q[1] > r.y0 && q[1] < r.y1;
+  for (const sh of shapes()) {
+    if (sh.type === 'circle') { const q = toS(sh.c), rr = sh.r * view.s; if (inR(q) || shapeOutline(sh).some((p) => inR(toS(p)))) cands.push({ shape: sh, d: Math.max(0, V.dist(c, q) - rr) }); continue; }
+    let d = Infinity, hit = false;
+    for (let i = 0; i < edgeCount(sh); i++) { const [a, b] = edgePts(sh, i).map(toS); if (segRect(a, b, r)) { hit = true; d = Math.min(d, distToSeg(c, a, b)); } }
+    if (hit) cands.push({ shape: sh, d });
   }
-  const kill = shapes().filter((sh) => {
-    if (sh.type === 'circle') { const q = toS(sh.c); if (q[0] > r.x0 && q[0] < r.x1 && q[1] > r.y0 && q[1] < r.y1) return true; return shapeOutline(sh).some((p) => { const s = toS(p); return s[0] > r.x0 && s[0] < r.x1 && s[1] > r.y0 && s[1] < r.y1; }); }
-    for (let i = 0; i < edgeCount(sh); i++) { const [a, bb] = edgePts(sh, i); if (segRect(toS(a), toS(bb), r)) return true; }
-    return false;
+  if (!cands.length) return { dims: [], shapes: [] };
+  cands.sort((a, b) => a.d - b.d); const best = cands[0]; const kind = best.dim ? 'dim' : 'shape';
+  const pick = cands.filter((k) => (k.dim ? 'dim' : 'shape') === kind && k.d <= best.d + 6);
+  return kind === 'dim' ? { dims: pick.map((k) => k.dim), shapes: [] } : { dims: [], shapes: pick.map((k) => k.shape) };
+}
+function deleteTargets(T) {
+  if (T.dims.length) {
+    const seen = new Set(); T.dims.forEach((h) => { const k = dimKey(h); if (!seen.has(k)) { seen.add(k); removeDimHit(h); } });
+    applyAllLocs(); commit(); render(); buzz(15);
+    toast(seen.size === 1 ? 'Dimension removed' : `${seen.size} dimensions removed`, [{ label: 'Undo', fn: undo }]); return true;
+  }
+  if (!T.shapes.length) return false;
+  doc.sketch.shapes = shapes().filter((s) => !T.shapes.includes(s)); sel = null; applyAllLocs(); commit(); render(); buzz(15);
+  toast(T.shapes.length === 1 ? 'Deleted' : `Deleted ${T.shapes.length} shapes`, [{ label: 'Undo', fn: undo }]); return true;
+}
+const strokeRect = (stroke, pad = 4) => { const b = bbox(stroke); return { x0: b.x0 - pad, y0: b.y0 - pad, x1: b.x1 + pad, y1: b.y1 + pad }; };
+function scratchDelete(stroke) {
+  live.doomed = null;
+  if (!deleteTargets(targetsIn(strokeRect(stroke)))) { toast('Scribble over a shape or a dimension to delete it.'); render(); }
+}
+const isStraightStroke = (st) => st.length > 2 && V.dist(st[0], st[st.length - 1]) > 0.92 * pathLen(st);
+// Gesture: two quick crossing strokes (an X) over something delete it. The first stroke was already drawn as a line.
+let lastLine = null;
+function crossOut(stroke) {
+  const ll = lastLine; lastLine = null;
+  if (!ll || performance.now() - ll.t > 2000 || commits !== ll.n || !isStraightStroke(stroke)) return false;
+  const A = ll.seg, B = [stroke[0], stroke[stroke.length - 1]];
+  const la = V.dist(A[0], A[1]), lb = V.dist(B[0], B[1]);
+  if (la < 16 || lb < 0.45 * la || lb > 2.2 * la || !segsCross(A[0], A[1], B[0], B[1])) return false;
+  const X = segIntersect(A[0], A[1], B[0], B[1]); const ta = V.dist(A[0], X) / la, tb = V.dist(B[0], X) / lb;
+  const ang = Math.acos(Math.abs(V.dot(V.norm(V.sub(A[1], A[0])), V.norm(V.sub(B[1], B[0])))));
+  if (ta < 0.18 || ta > 0.82 || tb < 0.18 || tb > 0.82 || ang < 0.6) return false;
+  const half = Math.max(la, lb) * 0.3; const r = { x0: X[0] - half, y0: X[1] - half, x1: X[0] + half, y1: X[1] + half };
+  undo(); drawSketch(); // take the first stroke back, then look at what the X covers
+  const T = targetsIn(r);
+  if (!T.dims.length && !T.shapes.length) { redo(); drawSketch(); return false; }
+  deleteTargets(T); return true;
+}
+// Gesture: one straight stroke through a dimension's number strikes it out.
+function strikeThrough(stroke) {
+  if (!isStraightStroke(stroke)) return false;
+  const a = stroke[0], b = stroke[stroke.length - 1]; const L = V.dist(a, b);
+  const dir = V.norm(V.sub(b, a));
+  // along the text, through its middle, starting and ending just outside it
+  const hits = dimHits.filter((h) => {
+    if (!isRealDim(h)) return false; const td = [Math.cos(h.ang), Math.sin(h.ang)];
+    if (Math.abs(V.dot(dir, td)) < Math.cos((28 * Math.PI) / 180)) return false;
+    if (distToSeg([h.cx, h.cy], a, b) > Math.max(5, h.th * 0.45)) return false;
+    const ta = V.dot(V.sub(a, [h.cx, h.cy]), td), tb = V.dot(V.sub(b, [h.cx, h.cy]), td);
+    return Math.min(ta, tb) < -h.tw / 2 + 2 && Math.max(ta, tb) > h.tw / 2 - 2 && L < 3 * h.tw + 50;
   });
-  if (!kill.length) { toast('Scribble over a shape or a dimension to delete it.'); render(); return; }
-  doc.sketch.shapes = shapes().filter((s) => !kill.includes(s)); sel = null; applyAllLocs(); commit(); render(); buzz(15);
-  toast(kill.length === 1 ? 'Deleted' : `Deleted ${kill.length} shapes`, [{ label: 'Undo', fn: undo }]);
+  if (!hits.length) return false;
+  for (const sh of shapes()) if (sh.type === 'circle' && distToSeg(toS(sh.c), a, b) < sh.r * view.s) return false;
+  // a stroke that also crosses geometry is a drawn line, not a strike-out
+  for (const sh of shapes()) { if (sh.type !== 'poly') continue; for (let i = 0; i < edgeCount(sh); i++) { const [p, q] = edgePts(sh, i).map(toS); if (segsCross(a, b, p, q)) return false; } }
+  return deleteTargets({ dims: hits, shapes: [] });
 }
 function removeDimHit(h) {
   const sh = byId(h.id); if (!sh) return;
@@ -1540,18 +1607,20 @@ const Tools = {
     down(p) {
       const t0 = performance.now(); const stroke = [p]; live.ink = stroke; clearTimeout(inkTimer); render();
       return {
-        move(q) { stroke.push(q); render(); },
+        move(q) { stroke.push(q); if (stroke.length % 4 === 0) live.doomed = isScratch(stroke) ? targetsIn(strokeRect(stroke)) : null; render(); },
         up(q) {
-          stroke.push(q); live.ink = null;
+          stroke.push(q); live.ink = null; live.doomed = null;
           if (isTap(p, q, t0)) {
             if (live.handwriting.length && nearInk(q)) { live.handwriting.push([q]); scheduleInk(); render(); return; }
             flushInk(); if (!tapEdit(q)) render(); return;
           }
           if (isScratch(stroke)) { live.handwriting = []; clearTimeout(inkTimer); scratchDelete(stroke); return; }
+          if (!live.handwriting.length && (crossOut(stroke) || strikeThrough(stroke))) return;
           if (looksLikeNumber(stroke)) { live.handwriting.push(stroke); live.inkSource = 'auto'; scheduleInk(); render(); return; }
-          flushInk(); finishFreehand(stroke);
+          flushInk(); const c0 = commits; finishFreehand(stroke);
+          lastLine = isStraightStroke(stroke) && commits === c0 + 1 ? { seg: [stroke[0], stroke[stroke.length - 1]], t: performance.now(), n: commits } : null;
         },
-        cancel() { live.ink = null; render(); },
+        cancel() { live.ink = null; live.doomed = null; render(); },
       };
     },
   },
@@ -1674,7 +1743,11 @@ const Tools = {
   erase: {
     down(p) {
       eraseTrail = [p]; let removed = 0;
-      const hit = (q) => { const h = hitTest(q, ['circle', 'edge', 'vertex', 'inside']); if (h) { doc.sketch.shapes = shapes().filter((s) => s.id !== h.id); removed++; buzz(5); } };
+      const hit = (q) => {
+        const d = dimHits.find((h) => isRealDim(h) && q[0] >= h.x0 && q[0] <= h.x1 && q[1] >= h.y0 && q[1] <= h.y1);
+        if (d) { removeDimHit(d); drawSketch(); removed++; buzz(5); return; }
+        const h = hitTest(q, ['circle', 'edge', 'vertex']); if (h) { doc.sketch.shapes = shapes().filter((s) => s.id !== h.id); removed++; buzz(5); }
+      };
       hit(p); render();
       return { move(q) { eraseTrail.push(q); hit(q); render(); }, up() { eraseTrail = []; if (removed) { sel = null; closeSheet(); applyAllLocs(); commit(); } render(); }, cancel() { eraseTrail = []; render(); } };
     },
@@ -2524,7 +2597,7 @@ function setMode(m) {
 }
 function updateFab() { const b = $('#btn-review'); b.hidden = mode !== 'sketch' || sheet.classList.contains('open') || !shapes().length; }
 const HINTS = {
-  draw: '<b>Draw</b> shapes, <b>write numbers</b> beside edges, <b>tap</b> an edge or a corner to set a size or angle, <b>scribble</b> to delete. Two-finger tap = undo.',
+  draw: '<b>Draw</b> shapes, <b>write numbers</b> beside edges, <b>tap</b> an edge or a corner to set a size or angle, <b>scribble or cross out</b> to delete. Two-finger tap = undo.',
   dim: '<b>Write a number</b> next to a line, or <b>60°</b> in a corner. <b>Drag from one line to the next</b> for the angle between them, or <b>from a hole to an edge</b> for its distance.',
   select: '<b>Tap</b> a point, edge or shape to edit it. Drag to move. Drag empty paper to pan.',
   line: '<b>Drag</b> to draw a straight line. Ends join up; close the loop to make an outline.',
@@ -2604,7 +2677,9 @@ function showHelp() {
   </ol>
   <h3>Gestures</h3>
   <ul>
-    <li><b>Scribble</b> back and forth over a shape or a dimension to delete it.</li>
+    <li><b>Scribble</b> back and forth over a shape or a dimension to delete it. It turns red before you lift, so you can see what goes.</li>
+    <li><b>Cross it out</b> with an X (two quick strokes), or <b>strike through</b> a dimension's number with one line.</li>
+    <li>With a stylus, hold the <b>pen button</b> (or use the eraser end) to erase whatever you touch.</li>
     <li><b>Two-finger tap</b>: undo. <b>Three-finger tap</b>: redo.</li>
     <li><b>Pinch</b> to zoom, two fingers to pan. With a stylus, the pen draws and your finger pans.</li>
     <li>If a number is read wrong, tap <b>Fix</b>. The app learns your handwriting. <b>Not a number</b> turns it back into lines.</li>

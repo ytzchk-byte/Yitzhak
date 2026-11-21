@@ -30,7 +30,10 @@ Everything runs in the browser, works offline once loaded, and can be installed 
 - Export **STL** (Z-up, millimetres) or **OBJ**; save and open projects as `.json`.
 
 **Gestures**
-- **Scribble** back and forth over a shape or a dimension to delete it.
+- **Scribble** back and forth over a shape or a dimension to delete it; it turns red before you lift.
+- **Cross it out** with an X (two quick strokes), or **strike through** a dimension's number with one line along it.
+- With a stylus, hold the **pen button** (S Pen) or use the **eraser end** to erase whatever you touch, in any tool.
+- Gestures delete what is closest to their centre, so crossing a hole deletes the hole and crossing its number deletes the number.
 - **Two-finger tap** = undo, **three-finger tap** = redo. Pinch to zoom, two fingers to pan. With a stylus, the pen draws and your finger pans.
 
 ## Use it
