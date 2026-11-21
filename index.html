@@ -516,6 +516,8 @@ const Digits = (() => {
     const chars = [];
     for (const bx of boxes) {
       const size = Math.max(bx.b.w, bx.b.h);
+      const isDeg = bx === boxes[boxes.length - 1] && chars.length > 0 && size < 0.45 * gh && (bx.b.y0 + bx.b.y1) / 2 < groupTop + 0.42 * gh;
+      if (isDeg) { chars.push({ dot: true, deg: true, strokes: [bx.s], x0: bx.b.x0, x1: bx.b.x1 }); continue; }
       const isDot = size < 0.2 * gh && (bx.b.y0 + bx.b.y1) / 2 > groupTop + 0.55 * gh;
       if (isDot) { chars.push({ dot: true, strokes: [bx.s], x0: bx.b.x0, x1: bx.b.x1 }); continue; }
       const pad = Math.max(0, (0.22 * gh - bx.b.w) / 2);
@@ -531,18 +533,20 @@ const Digits = (() => {
   }
   function read(strokes) {
     const chars = segment(strokes);
-    let text = '', worst = 0; const parts = [];
+    let text = '', worst = 0, deg = false; const parts = [];
     for (const c of chars) {
+      if (c.deg) { deg = true; parts.push({ ch: '°', dot: true }); continue; }
       if (c.dot) { if (!text.includes('.')) text += '.'; parts.push({ ch: '.', dot: true }); continue; }
       const r = classify(c.strokes); text += r.ch; worst = Math.max(worst, r.score); parts.push({ ch: r.ch, cloud: r.cloud });
     }
     if (text.startsWith('.')) text = '0' + text;
     if (text.endsWith('.')) text = text.slice(0, -1);
-    return { text, value: num(text), confidence: worst < 4.5 ? 'ok' : 'low', worst, parts };
+    return { text, value: num(text), confidence: worst < 4.5 ? 'ok' : 'low', worst, parts, deg };
   }
   function learn(parts, corrected) {
     const digits = String(corrected).replace(/[^0-9.]/g, '');
-    if (!parts || digits.length !== parts.length) return false;
+    if (!parts) return false; parts = parts.filter((q) => q.ch !== '°');
+    if (digits.length !== parts.length) return false;
     let saved = []; try { saved = JSON.parse(store.get('napkin.ink.v1') || '[]'); } catch {}
     let n = 0;
     parts.forEach((p, i) => {
@@ -688,33 +692,62 @@ function polyDirs(sh) {
   for (let k = 0; k < n; k++) { const [a, b] = edgePts(sh, k); const e = V.sub(b, a); L.push(V.len(e)); dirs.push(V.len(e) > 1e-9 ? V.norm(e) : [1, 0]); }
   return { n, dirs, L };
 }
-// Orthonormal basis of the row space of a 2×m matrix given as columns; reports which unknowns are pinned.
-function rowspace(cols) {
-  const r1 = cols.map((c) => c[0]), r2 = cols.map((c) => c[1]);
-  const scale = Math.max(1e-9, ...cols.map((c) => Math.hypot(c[0], c[1])));
-  const basis = []; const n1 = Math.hypot(...r1, 0);
-  if (n1 > 1e-7 * scale) basis.push(r1.map((x) => x / n1));
-  let w = r2.slice(); if (basis[0]) { const d = w.reduce((s, x, i) => s + x * basis[0][i], 0); w = w.map((x, i) => x - d * basis[0][i]); }
-  const n2 = Math.hypot(...w, 0); if (n2 > 1e-7 * scale) basis.push(w.map((x) => x / n2));
-  return { rank: basis.length, det: cols.map((_, k) => basis.reduce((s, b) => s + b[k] * b[k], 0) > 1 - 1e-6) };
+const hasVangs = (sh) => !!(sh.vangs && Object.keys(sh.vangs).length);
+const canAngle = (sh, i) => sh.type === 'poly' && !sh.smooth && (sh.closed ? sh.pts.length >= 3 : i > 0 && i < sh.pts.length - 1);
+const inEdge = (sh, i) => (sh.closed ? (i - 1 + sh.pts.length) % sh.pts.length : i - 1);
+// A corner angle between two horizontal/vertical sides lets one of them turn: the non-horizontal one, else the shorter.
+function releasedEdges(sh) {
+  const rel = new Set(); if (!hasVangs(sh)) return rel;
+  const { n, dirs, L } = polyDirs(sh);
+  const kept = (k) => k >= 0 && k < n && !(sh.angs && sh.angs[k] != null) && isAxisDir(dirs[k]) && !rel.has(k);
+  for (const i of Object.keys(sh.vangs).map(Number).sort((a, b) => a - b)) {
+    const a = inEdge(sh, i), b = i; if (a < 0 || b >= n || !kept(a) || !kept(b)) continue;
+    const ha = Math.abs(dirs[a][1]) < 0.01, hb = Math.abs(dirs[b][1]) < 0.01;
+    rel.add(ha !== hb ? (ha ? b : a) : L[a] <= L[b] ? a : b);
+  }
+  return rel;
 }
+// Unknowns: every side length and each free side direction. Rows: the outline closes (2), then each length and
+// corner angle in the order they were added. A row that adds no rank repeats what is already known: over-defined.
 function polyAnalysis(sh) {
-  const { n, dirs, L } = polyDirs(sh); const dims = sh.dims || {}, angs = sh.angs || {};
+  const { n, dirs, L } = polyDirs(sh); const dims = sh.dims || {}, angs = sh.angs || {}, vangs = sh.vangs || {}; const rel = releasedEdges(sh);
   const unk = [];
-  for (let k = 0; k < n; k++) if (dims[k] == null) unk.push({ k, t: 'len', col: dirs[k] });
-  for (let k = 0; k < n; k++) if (angs[k] == null && !isAxisDir(dirs[k])) unk.push({ k, t: 'ang', col: [-dirs[k][1] * L[k], dirs[k][0] * L[k]] });
-  const R = rowspace(unk.map((u) => u.col));
-  const dof = unk.length - R.rank;
+  for (let k = 0; k < n; k++) unk.push({ k, t: 'len' });
+  for (let k = 0; k < n; k++) if (angs[k] == null && (!isAxisDir(dirs[k]) || rel.has(k))) unk.push({ k, t: 'ang' });
+  const m = unk.length; const col = (t, k) => unk.findIndex((u) => u.t === t && u.k === k); const mL = L.reduce((a, b) => a + b, 0) / Math.max(n, 1) || 1;
+  const basis = [];
+  const addRow = (r) => { let w = r.slice(); for (const b of basis) { const d = w.reduce((t, x, i) => t + x * b[i], 0); w = w.map((x, i) => x - d * b[i]); } const nw = Math.hypot(...w, 0), nr = Math.hypot(...r, 0); if (nr > 0 && nw > 1e-7 * nr) { basis.push(w.map((x) => x / nw)); return true; } return false; };
+  if (sh.closed) {
+    const rx = new Array(m).fill(0), ry = new Array(m).fill(0);
+    unk.forEach((u, j) => { const d = dirs[u.k]; if (u.t === 'len') { rx[j] = d[0]; ry[j] = d[1]; } else { rx[j] = -d[1] * L[u.k]; ry[j] = d[0] * L[u.k]; } });
+    addRow(rx); addRow(ry);
+  }
+  const stamp = sh.stamp || {};
+  const cons = [];
+  for (const k of Object.keys(dims).map(Number)) if (k < n) { const r = new Array(m).fill(0); r[col('len', k)] = 1; cons.push({ key: 'd' + k, k, r }); }
+  for (const i of Object.keys(vangs).map(Number)) if (canAngle(sh, i)) { const r = new Array(m).fill(0); const ja = col('ang', inEdge(sh, i)), jb = col('ang', i); if (ja >= 0) r[ja] = -mL; if (jb >= 0) r[jb] = mL; cons.push({ key: 'v' + i, i, r }); }
+  cons.sort((a, b) => (stamp[a.key] || 0) - (stamp[b.key] || 0) || (a.key < b.key ? -1 : 1));
+  const red = [], redV = [];
+  for (const c of cons) if (!addRow(c.r)) (c.key[0] === 'd' ? red : redV).push(c.key[0] === 'd' ? c.k : c.i);
+  const det = unk.map((_, j) => basis.reduce((t, b) => t + b[j] * b[j], 0) > 1 - 1e-6);
+  const dof = m - basis.length;
   const edges = new Array(n).fill('dim'), angState = dirs.map((d, k) => (angs[k] != null ? 'set' : isAxisDir(d) ? 'axis' : 'derived'));
-  unk.forEach((u, ix) => { if (u.t === 'len') edges[u.k] = R.det[ix] ? 'derived' : 'free'; else angState[u.k] = R.det[ix] ? 'derived' : 'free'; });
-  const red = [];
-  for (let k = 0; k < n; k++) if (dims[k] != null) { const R2 = rowspace([...unk.map((u) => u.col), dirs[k]]); if (R2.det[unk.length]) { edges[k] = 'over'; red.push(k); } }
-  const freeLen = unk.filter((u, ix) => u.t === 'len' && !R.det[ix]).map((u) => u.k);
-  const freeAng = unk.filter((u, ix) => u.t === 'ang' && !R.det[ix]).map((u) => u.k);
+  unk.forEach((u, j) => { if (u.t === 'len') edges[u.k] = dims[u.k] != null ? 'dim' : det[j] ? 'derived' : 'free'; else angState[u.k] = det[j] ? 'derived' : 'free'; });
+  red.forEach((k) => (edges[k] = 'over'));
+  const hot = edges.map((e, k) => e === 'free' || angState[k] === 'free');
+  const freeLen = unk.filter((u, j) => u.t === 'len' && !det[j]).map((u) => u.k);
+  const freeAng = unk.filter((u, j) => u.t === 'ang' && !det[j]).map((u) => u.k);
   const pri = (k) => (Math.abs(dirs[k][1]) < 0.01 ? 3 : Math.abs(dirs[k][0]) < 0.01 ? 2 : 1) * 1e6 + L[k];
   freeLen.sort((a, b) => pri(b) - pri(a));
-  const suggest = freeLen.length ? { t: 'len', k: freeLen[0] } : freeAng.length ? { t: 'ang', k: freeAng[0] } : null;
-  return { dof, edges, angState, red, suggest };
+  let suggest = null;
+  if (freeLen.length) suggest = { t: 'len', k: freeLen[0] };
+  else if (freeAng.length) {
+    const k = freeAng[0]; const known = (e) => angState[e] !== 'free';
+    const vIn = k, vOut = (k + 1) % sh.pts.length;
+    const vi = known(inEdge(sh, vIn)) && !vangs[vIn] ? vIn : vOut;
+    suggest = canAngle(sh, vi) ? { t: 'vang', i: vi } : { t: 'ang', k };
+  }
+  return { dof, edges, angState, hot, red, redV, suggest };
 }
 function posAnalysis(sh) {
   if (!needsPosition(sh)) return { need: false, have: 0 };
@@ -739,6 +772,7 @@ function analyzeSketch() {
       const P = polyAnalysis(s); A.polys.set(s.id, P); A.need += P.dof;
       if (P.dof) A.items.push({ lvl: 'need', text: `${name} needs ${plural(P.dof, 'more dimension')}`, act: { t: 'suggest', id: s.id }, btn: 'Add' });
       for (const k of P.red) { A.over++; A.items.push({ lvl: 'over', text: `Length ${fmt(s.dims[k])} is already set by other dimensions`, act: { t: 'undim', id: s.id, k }, btn: 'Remove' }); }
+      for (const i of P.redV) { A.over++; A.items.push({ lvl: 'over', text: `Angle ${fmt(s.vangs[i])}° is already set by other sizes`, act: { t: 'unvang', id: s.id, i }, btn: 'Remove' }); }
     }
     if (s.type === 'circle' && s.dim == null) { A.need++; A.items.push({ lvl: 'need', text: `${name} diameter is not set`, act: { t: 'dia', id: s.id }, btn: 'Add' }); }
     const pos = posAnalysis(s); A.pos.set(s.id, pos);
@@ -795,8 +829,8 @@ function drawSketch() {
     c.lineJoin = 'round'; c.lineCap = 'round';
     if (sh.type === 'poly' && !sh.smooth && P && calibrated && !selected) {
       for (let i = 0; i < edgeCount(sh); i++) {
-        const [a, b] = edgePts(sh, i).map(toS); const st = P.edges[i];
-        c.strokeStyle = st === 'free' ? tok.warn : st === 'over' ? tok.danger : tok.ink; c.lineWidth = st === 'free' ? 2.5 : 2;
+        const [a, b] = edgePts(sh, i).map(toS); const st = P.edges[i]; const hot = P.hot[i];
+        c.strokeStyle = hot ? tok.warn : st === 'over' ? tok.danger : tok.ink; c.lineWidth = hot ? 2.5 : 2;
         c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]); c.stroke();
       }
     } else {
@@ -817,6 +851,7 @@ function drawSketch() {
   }
   if (focus) {
     if (focus.edge) { const sh = byId(focus.edge.id); if (sh) hiEdge(...edgePts(sh, focus.edge.i), tok.accent); }
+    if (focus.corner) { const sh = byId(focus.corner.id); if (sh) { const i = focus.corner.i; hiEdge(...edgePts(sh, inEdge(sh, i)), tok.accent); hiEdge(...edgePts(sh, i), tok.accent); } }
     if (focus.line) { const L = refLine(focus.line); if (L) hiEdge(L.a, L.b, tok.accent); }
     if (focus.point) { const q = toS(focus.point); c.fillStyle = tok.accent; c.beginPath(); c.arc(q[0], q[1], 6, 0, Math.PI * 2); c.fill(); }
     if (focus.circle) { const sh = byId(focus.circle); if (sh) { const q = toS(sh.c); c.strokeStyle = tok.accent; c.lineWidth = 4; c.globalAlpha = 0.85; c.beginPath(); c.arc(q[0], q[1], sh.r * view.s, 0, Math.PI * 2); c.stroke(); c.globalAlpha = 1; } }
@@ -860,6 +895,15 @@ function outwardNormal(sh, i) {
   if (sh.closed) { if (signedArea(sh.pts) < 0) n = [-n[0], -n[1]]; } else n = [-d[1], d[0]];
   return [n[0], -n[1]];
 }
+function drawCornerAngle(c, sh, i, text, col, strong) {
+  const n = sh.pts.length; const q = toS(sh.pts[i]), a = toS(sh.pts[(i - 1 + n) % n]), b = toS(sh.pts[(i + 1) % n]);
+  const a1 = Math.atan2(a[1] - q[1], a[0] - q[0]), a2 = Math.atan2(b[1] - q[1], b[0] - q[0]);
+  const th = (cornerAngle(sh, i) * Math.PI) / 180; const cw = (((a2 - a1) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+  const useCw = Math.abs(cw - th) <= Math.abs(2 * Math.PI - cw - th); const mid = useCw ? a1 + cw / 2 : a1 - (2 * Math.PI - cw) / 2;
+  const r = clamp(Math.min(V.dist(q, a), V.dist(q, b)) * 0.3, 14, 28);
+  c.strokeStyle = col; c.lineWidth = strong ? 1.4 : 1; c.beginPath(); c.arc(q[0], q[1], r, a1, useCw ? a1 + cw : a1 - (2 * Math.PI - cw), !useCw); c.stroke();
+  label(c, [q[0] + (r + 15) * Math.cos(mid), q[1] + (r + 15) * Math.sin(mid)], text, col, 0, true, strong ? 12 : 11, { kind: 'vang', id: sh.id, i });
+}
 function arrow(c, from, to, col) {
   const d = V.norm(V.sub(to, from)), s = 7, w = 3;
   c.fillStyle = col; c.beginPath(); c.moveTo(to[0], to[1]); c.lineTo(to[0] - d[0] * s - d[1] * w, to[1] - d[1] * s + d[0] * w); c.lineTo(to[0] - d[0] * s + d[1] * w, to[1] - d[1] * s - d[0] * w); c.closePath(); c.fill();
@@ -897,6 +941,11 @@ function drawDims(c, sh, P, showMeasure, calibrated) {
       c.moveTo(a2[0], a2[1]); c.lineTo(b2[0], b2[1]); c.stroke();
       arrow(c, b2, a2, col); arrow(c, a2, b2, col);
       label(c, [(a2[0] + b2[0]) / 2, (a2[1] + b2[1]) / 2], fmt(sh.dims[i]), col, ang, true, 12, { kind: 'edge', id: sh.id, i });
+    }
+    if (!sh.smooth) for (let i = 0; i < sh.pts.length; i++) {
+      if (!canAngle(sh, i)) continue; const has = sh.vangs && sh.vangs[i] != null;
+      if (has) drawCornerAngle(c, sh, i, `${fmt(sh.vangs[i])}°`, P && P.redV.includes(i) ? tok.danger : tok.markup, true);
+      else if (tool === 'dim') { const th = cornerAngle(sh, i); if (Math.abs(((th % 90) + 90) % 90) > 0.5 && Math.abs(((th % 90) + 90) % 90 - 90) > 0.5) drawCornerAngle(c, sh, i, `(${fmt(Math.round(th * 10) / 10)}°)`, tok.muted, false); }
     }
     for (const k of Object.keys(sh.angs || {}).map(Number)) {
       if (k >= n) continue; const [aw, bw] = edgePts(sh, k); const a = toS(aw), b = toS(bw); const d = V.norm(V.sub(b, a));
@@ -1160,7 +1209,7 @@ function addOpenWithJoin(sh) {
   for (const idx of [0, pts.length - 1]) { const v = nearestVertex(pts[idx], null, false); if (v) pts[idx] = v.p.slice(); }
   return pushShape({ ...sh, closed: false, pts }, merged ? 'Joined' : null);
 }
-function pushShape(sh, kind) { sh.id = sh.id || uid(); sh.dims = {}; sh.angs = {}; sh.locs = []; doc.sketch.shapes.push(sh); return kind; }
+function pushShape(sh, kind) { sh.id = sh.id || uid(); sh.dims = {}; sh.angs = {}; sh.vangs = {}; sh.locs = []; doc.sketch.shapes.push(sh); return kind; }
 function finishFreehand(stroke, quiet) {
   const res = recognize(stroke.map(toW)); if (!res) { render(); return; }
   let kind = res.kind;
@@ -1184,12 +1233,13 @@ function setEdgeDim(sh, i, value) {
   if (!(value > 0)) return 'Enter a length above 0.';
   const [a, b] = edgePts(sh, i); const cur = V.dist(a, b);
   if (!sketchCalibrated()) { scaleSketch(value / cur); sh.dims[i] = value; return 'Sketch scaled to real size'; }
-  const prev = sh.dims[i]; sh.dims[i] = value;
+  const prev = sh.dims[i]; sh.dims[i] = value; sh.stamp = sh.stamp || {}; sh.stamp['d' + i] = Date.now();
   const r = applyDims(sh, i);
   if (r !== true) { if (prev == null) delete sh.dims[i]; else sh.dims[i] = prev; applyDims(sh, i); return r; }
   applyAllLocs(); return null;
 }
 function applyDims(sh, anchor, dirOverride = {}) {
+  if (hasVangs(sh)) { const backup = sh.pts.map((q) => q.slice()); const r = solveShape(sh, { dirTarget: dirOverride }); if (r !== true) sh.pts = backup; return r; }
   const { n, dirs, L } = polyDirs(sh);
   Object.entries(dirOverride).forEach(([k, d]) => { dirs[+k] = d; });
   const fixed = new Set(Object.keys(sh.dims).map(Number).filter((k) => k < n));
@@ -1200,6 +1250,72 @@ function applyDims(sh, anchor, dirOverride = {}) {
   if (r.L.some((l, k) => !fixed.has(k) && l < 0.05)) return 'That doesn’t fit with the other dimensions.';
   sh.pts = rebuildLoop(sh.pts[anchor], anchor, dirs, r.L);
   return true;
+}
+// Corner angle between the two sides meeting at vertex i, in degrees (inside angle for outlines).
+function turnAt(P, i, n) { const a = P[(i - 1 + n) % n], b = P[i], c = P[(i + 1) % n]; const u = [b[0] - a[0], b[1] - a[1]], v = [c[0] - b[0], c[1] - b[1]]; return Math.atan2(u[0] * v[1] - u[1] * v[0], u[0] * v[0] + u[1] * v[1]); }
+function cornerAngle(sh, i) {
+  const t = turnAt(sh.pts, i, sh.pts.length);
+  if (!sh.closed) return 180 - (Math.abs(t) * 180) / Math.PI;
+  return 180 - ((Math.sign(signedArea(sh.pts)) || 1) * t * 180) / Math.PI;
+}
+function solveLinear(A, b) {
+  const n = b.length; const M = A.map((r, i) => [...r, b[i]]);
+  for (let c = 0; c < n; c++) {
+    let piv = c; for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[piv][c])) piv = r;
+    if (Math.abs(M[piv][c]) < 1e-300) return null; [M[c], M[piv]] = [M[piv], M[c]];
+    for (let r = 0; r < n; r++) if (r !== c) { const f = M[r][c] / M[c][c]; if (f) for (let k = c; k <= n; k++) M[r][k] -= f * M[c][k]; }
+  }
+  return M.map((r, i) => r[n] / r[i]);
+}
+// Move the vertices as little as possible so every length, kept direction and corner angle holds (min-norm Newton).
+function solveShape(sh, opt = {}) {
+  const n = sh.pts.length, E = edgeCount(sh); if (n < 2) return true;
+  const { dirs, L } = polyDirs(sh); const rel = releasedEdges(sh); const mL = L.reduce((a, b) => a + b, 0) / Math.max(E, 1) || 1;
+  const sg = sh.closed ? Math.sign(signedArea(sh.pts)) || 1 : 1;
+  const keep = {};
+  for (let k = 0; k < E; k++) {
+    if (opt.dirTarget && opt.dirTarget[k]) keep[k] = opt.dirTarget[k];
+    else if (sh.angs && sh.angs[k] != null) keep[k] = dirs[k];
+    else if (isAxisDir(dirs[k]) && !rel.has(k)) keep[k] = snapDir(dirs[k]);
+  }
+  const P = (x, i) => [x[2 * i], x[2 * i + 1]]; const cons = [];
+  for (const [k, Lk] of Object.entries(sh.dims || {})) { const a = +k; if (a >= E) continue; cons.push((x) => { const p = P(x, a), q = P(x, (a + 1) % n); return Math.hypot(q[0] - p[0], q[1] - p[1]) - Lk; }); }
+  for (const [k, d] of Object.entries(keep)) { const a = +k; cons.push((x) => { const p = P(x, a), q = P(x, (a + 1) % n); return d[0] * (q[1] - p[1]) - d[1] * (q[0] - p[0]); }); }
+  for (const [k, deg] of Object.entries(sh.vangs || {})) {
+    const i = +k; if (!canAngle(sh, i)) continue;
+    const cur = turnAt(sh.pts, i, n); const ext = Math.PI - (deg * Math.PI) / 180; const tau = sh.closed ? sg * ext : (Math.sign(cur) || 1) * ext;
+    cons.push((x) => { const t = turnAt([P(x, (i - 1 + n) % n), P(x, i), P(x, (i + 1) % n)], 1, 3) - tau; return Math.atan2(Math.sin(t), Math.cos(t)) * mL; });
+  }
+  if (!cons.length) return true;
+  let x = sh.pts.flat(); const N = x.length, m = cons.length;
+  const R = (y) => cons.map((f) => f(y)); let r = R(x); let err = Math.max(...r.map(Math.abs)); const tol = 1e-9 * mL;
+  for (let it = 0; it < 100 && err > tol; it++) {
+    const h = 1e-7 * mL; const J = Array.from({ length: m }, () => new Array(N));
+    for (let j = 0; j < N; j++) { const xj = x[j]; x[j] = xj + h; const rp = R(x); x[j] = xj; for (let i = 0; i < m; i++) J[i][j] = (rp[i] - r[i]) / h; }
+    const A = Array.from({ length: m }, (_, i) => Array.from({ length: m }, (_, k) => { let t = 0; for (let j = 0; j < N; j++) t += J[i][j] * J[k][j]; return t; }));
+    const tr = A.reduce((t, row, i) => t + row[i], 0) / m || 1; for (let i = 0; i < m; i++) A[i][i] += 1e-10 * tr;
+    const y = solveLinear(A, r); if (!y) break;
+    const dx = new Array(N).fill(0); for (let j = 0; j < N; j++) { let t = 0; for (let i = 0; i < m; i++) t += J[i][j] * y[i]; dx[j] = -t; }
+    let step = 1, ok = false;
+    for (let ls = 0; ls < 14; ls++) { const xn = x.map((v, j) => v + step * dx[j]); const rn = R(xn); const en = Math.max(...rn.map(Math.abs)); if (en < err) { x = xn; r = rn; err = en; ok = true; break; } step /= 2; }
+    if (!ok) break;
+  }
+  if (err > 1e-5 * mL) return 'Those sizes and angles can’t all be met. Remove one of them.';
+  const pts = []; for (let i = 0; i < n; i++) pts.push(P(x, i));
+  for (let k = 0; k < E; k++) if (V.dist(pts[k], pts[(k + 1) % n]) < 0.05) return 'That doesn’t fit with the other dimensions.';
+  if (sh.closed && (Math.sign(signedArea(pts)) || 1) !== sg) return 'That doesn’t fit with the other dimensions.';
+  sh.pts = pts; return true;
+}
+function setVertexAngle(sh, i, deg) {
+  if (!canAngle(sh, i)) return 'Pick a corner where two straight lines meet.';
+  const max = sh.closed ? 359 : 179;
+  if (!(deg > 0 && deg <= max)) return `Enter an angle from 1° to ${max}°.`;
+  if (Math.abs(deg - 180) < 0.01) return 'At 180° the two lines are one straight line.';
+  sh.vangs = sh.vangs || {}; const prev = sh.vangs[i]; const backup = sh.pts.map((q) => q.slice());
+  sh.vangs[i] = deg; sh.stamp = sh.stamp || {}; sh.stamp['v' + i] = Date.now();
+  const r = solveShape(sh);
+  if (r !== true) { if (prev == null) delete sh.vangs[i]; else sh.vangs[i] = prev; sh.pts = backup; return r; }
+  applyAllLocs(); return null;
 }
 function setEdgeAngle(sh, i, deg) {
   if (!(deg >= 0 && deg <= 180)) return 'Enter an angle from 0 to 180°.';
@@ -1344,7 +1460,7 @@ function isScratch(stroke) {
 function scratchDelete(stroke) {
   const b = bbox(stroke); const r = { x0: b.x0 - 4, y0: b.y0 - 4, x1: b.x1 + 4, y1: b.y1 + 4 };
   const dimsHit = dimHits.filter((h) => !(h.x1 < r.x0 || h.x0 > r.x1 || h.y1 < r.y0 || h.y0 > r.y1));
-  const real = dimsHit.filter((h) => (h.kind === 'edge' ? byId(h.id)?.dims[h.i] != null : h.kind === 'dia' ? byId(h.id)?.dim != null : true));
+  const real = dimsHit.filter((h) => (h.kind === 'edge' ? byId(h.id)?.dims[h.i] != null : h.kind === 'dia' ? byId(h.id)?.dim != null : h.kind === 'vang' ? (byId(h.id)?.vangs || {})[h.i] != null : true));
   if (real.length) {
     real.forEach(removeDimHit); commit(); render(); buzz(15);
     toast(real.length === 1 ? 'Dimension removed' : `${real.length} dimensions removed`, [{ label: 'Undo', fn: undo }]); return;
@@ -1363,6 +1479,7 @@ function removeDimHit(h) {
   if (h.kind === 'edge') delete sh.dims[h.i];
   if (h.kind === 'dia') sh.dim = null;
   if (h.kind === 'ang') delete sh.angs[h.i];
+  if (h.kind === 'vang') delete sh.vangs[h.i];
   if (h.kind === 'loc') sh.locs.splice(h.j, 1);
 }
 function editDimHit(h, opts = {}) {
@@ -1370,11 +1487,13 @@ function editDimHit(h, opts = {}) {
   if (h.kind === 'edge') editEdge(sh, h.i, opts);
   if (h.kind === 'dia') editCircle(sh, opts);
   if (h.kind === 'ang') editAngle(sh, h.i, opts);
+  if (h.kind === 'vang') editVertexAngle(sh, h.i, opts);
   if (h.kind === 'loc') editLoc(sh, sh.locs[h.j], opts);
 }
 // Tap in Draw/Dimension: edit the dimension or entity under the finger.
 function tapEdit(q) {
   const h = dimHitAt(q); if (h) { editDimHit(h); return true; }
+  const v = nearestCorner(q); if (v && v.d < 18) { editVertexAngle(v.sh, v.i); return true; }
   const t = hitTest(q, ['circle', 'edge']);
   if (t && t.kind === 'edge') { editEdge(byId(t.id), t.i); return true; }
   if (t && t.kind === 'shape' && byId(t.id).type === 'circle') { editCircle(byId(t.id)); return true; }
@@ -1391,6 +1510,12 @@ function nearestTarget(sp) {
   }
   return best;
 }
+function nearestCorner(sp) {
+  let best = null;
+  for (const sh of shapes()) { if (sh.type !== 'poly' || sh.smooth) continue; sh.pts.forEach((p, i) => { if (!canAngle(sh, i)) return; const d = V.dist(toS(p), sp); if (!best || d < best.d) best = { d, sh, i }; }); }
+  return best;
+}
+function sharedVertex(sh, a, b) { const n = sh.pts.length; if (sh.closed) { if (b === (a + 1) % n) return b; if (a === (b + 1) % n) return a; } else { if (b === a + 1) return b; if (a === b + 1) return a; } return -1; }
 function looksLikeNumber(stroke) {
   if (!shapes().some((s) => s.type === 'circle' || (s.type === 'poly' && !s.smooth))) return false;
   const b = bbox(stroke); const size = Math.max(b.w, b.h); const center = [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2];
@@ -1405,7 +1530,8 @@ function looksLikeNumber(stroke) {
   const t = nearestTarget(center); if (!t || t.d > 110) return false;
   const cw = toW(center);
   const inside = shapes().filter((s) => isClosedShape(s) && pointInPoly(cw, shapeOutline(s)));
-  if (inside.length && !(t.sh.type === 'circle' && t.d < 70 && !inside.includes(t.sh))) return false;
+  const corner = nearestCorner(center);
+  if (inside.length && !(t.sh.type === 'circle' && t.d < 70 && !inside.includes(t.sh)) && !(corner && corner.d < 85)) return false;
   return true;
 }
 
@@ -1492,11 +1618,16 @@ const Tools = {
         };
       }
       const stroke = [p]; live.ink = stroke; clearTimeout(inkTimer); render();
+      const e0 = hitTest(p, ['edge']);
       return {
-        move(q) { stroke.push(q); render(); },
+        move(q) { stroke.push(q); if (e0 && e0.kind === 'edge') { const t = hitTest(q, ['edge']); focus = t && t.kind === 'edge' && t.id === e0.id && sharedVertex(byId(e0.id), e0.i, t.i) >= 0 ? { corner: { id: e0.id, i: sharedVertex(byId(e0.id), e0.i, t.i) } } : null; } render(); },
         up(q) {
-          stroke.push(q); live.ink = null;
+          stroke.push(q); live.ink = null; focus = null;
           const tap = isTap(p, q, t0);
+          if (!tap && e0 && e0.kind === 'edge') {
+            const t = hitTest(q, ['edge']); const sh0 = byId(e0.id);
+            if (t && t.kind === 'edge' && t.id === e0.id && t.i !== e0.i) { const v = sharedVertex(sh0, e0.i, t.i); if (v >= 0) { render(); editVertexAngle(sh0, v); return; } toast('Those lines don’t meet. Drag between two lines that share a corner.'); render(); return; }
+          }
           if (tap && live.handwriting.length && nearInk(q)) { live.handwriting.push([q]); scheduleInk(); render(); return; }
           if (tap) { render(); if (!tapEdit(q)) toast('Tap a line to type its length, or write the number beside it.'); return; }
           if (isScratch(stroke)) { live.handwriting = []; scratchDelete(stroke); return; }
@@ -1521,6 +1652,7 @@ const Tools = {
           if (h.kind === 'vertex') {
             sh.pts[h.i] = snapPoint(q, sh.id).p;
             const n = edgeCount(sh); [h.i, (h.i - 1 + sh.pts.length) % sh.pts.length].forEach((k) => { if (k < n) { delete sh.dims[k]; delete sh.angs[k]; } });
+            if (sh.vangs) [h.i - 1, h.i, h.i + 1].forEach((k) => delete sh.vangs[(k + sh.pts.length) % sh.pts.length]);
           } else {
             const orig = JSON.parse(snap0); const st = gridSteps()[0];
             let d = V.sub(toW(q), w0); d = [Math.round(d[0] / st) * st, Math.round(d[1] / st) * st];
@@ -1563,6 +1695,14 @@ function processInk() {
   const r = Digits.read(strokes); const t = nearestTarget(center);
   if (!t || t.d > 160) { if (auto) asGeometry(); else toast('Write the number closer to a line.'); return; }
   if (auto && (!(r.value > 0) || r.worst > 2.8)) { asGeometry(); return; }
+  if (r.deg) {
+    const v = nearestCorner(center); if (!v || v.d > 170) { toast('Write the angle inside a corner, like 60°.'); return; }
+    if (!(r.value > 0)) { editVertexAngle(v.sh, v.i, { ink: r }); return; }
+    const m = setVertexAngle(v.sh, v.i, r.value); if (m) { toast(m); return; }
+    commit(); render(); buzz(12); const vid = v.sh.id, vi = v.i;
+    const acts = [{ label: 'Fix', fn: () => editVertexAngle(byId(vid), vi, { ink: r }) }]; if (auto) acts.push({ label: 'Not a number', fn: () => { undo(); asGeometry(); } });
+    toast(`Angle ${r.text}°`, acts, 6000); return;
+  }
   if (!r.text || !(r.value > 0)) { t.sh.type === 'circle' ? editCircle(t.sh, { ink: r }) : editEdge(t.sh, t.i, { ink: r }); return; }
   const msg = t.sh.type === 'circle' ? setCircleDim(t.sh, r.value) : setEdgeDim(t.sh, t.i, r.value);
   if (msg && !/scaled/.test(msg)) { toast(msg); return; }
@@ -1607,6 +1747,7 @@ function ensureVisible(pt) {
 function focusPoint(f) {
   if (!f) return null;
   if (f.edge) { const sh = byId(f.edge.id); return sh ? V.lerp(...edgePts(sh, f.edge.i), 0.5) : null; }
+  if (f.corner) { const sh = byId(f.corner.id); return sh ? sh.pts[f.corner.i] : null; }
   if (f.circle) { const sh = byId(f.circle); return sh ? sh.c : null; }
   if (f.point) return f.point;
   if (f.line) { const L = refLine(f.line); return L ? V.lerp(L.a, L.b, 0.5) : null; }
@@ -1690,6 +1831,16 @@ function editAngle(sh, i) {
     remove: sh.angs && sh.angs[i] != null ? () => { delete sh.angs[i]; } : null,
   });
 }
+function editVertexAngle(sh, i, o = {}) {
+  if (!sh || !canAngle(sh, i)) return; const cur = cornerAngle(sh, i); const has = sh.vangs && sh.vangs[i] != null;
+  openNumberSheet({
+    title: 'Angle between lines', sub: `Now ${fmt(Math.round(cur * 100) / 100)}°`, note: sh.closed ? 'The inside angle at the highlighted corner. Other corners and sizes stay as they are where possible.' : 'The angle between the two highlighted lines.',
+    label: 'Angle', unit: '°', value: o.ink && o.ink.text ? o.ink.text : has ? fmt(sh.vangs[i]) : '', placeholder: fmt(Math.round(cur * 10) / 10), ink: o.ink,
+    guideText: 'set the angle between the highlighted lines', focus: { corner: { id: sh.id, i } },
+    apply: (v) => { const m = setVertexAngle(sh, i, v); return m ? { ok: false, msg: m } : { ok: true }; },
+    remove: has ? () => { delete sh.vangs[i]; } : null,
+  });
+}
 function editCircle(sh, o = {}) {
   if (!sh) return; const calibrated = sketchCalibrated();
   openNumberSheet({
@@ -1732,17 +1883,18 @@ function runAct(act) {
       if (big.type === 'circle') return editCircle(big);
       const P = polyAnalysis(big); return P.suggest && P.suggest.t === 'len' ? editEdge(big, P.suggest.k) : editEdge(big, 0);
     }
-    case 'suggest': { const P = polyAnalysis(sh); if (!P.suggest) return guideNext(); return P.suggest.t === 'len' ? editEdge(sh, P.suggest.k) : editAngle(sh, P.suggest.k); }
+    case 'suggest': { const P = polyAnalysis(sh); if (!P.suggest) return guideNext(); return P.suggest.t === 'len' ? editEdge(sh, P.suggest.k) : P.suggest.t === 'vang' ? editVertexAngle(sh, P.suggest.i) : editAngle(sh, P.suggest.k); }
     case 'dia': return editCircle(sh);
     case 'pos': { const loc = suggestLoc(sh); if (!loc) { guide.active = false; toast('No straight edge nearby to measure from. Drag the shape into place instead.'); return; } return editLoc(sh, loc, { isNew: true }); }
     case 'undim': delete sh.dims[act.k]; commit(); render(); return openReview();
+    case 'unvang': delete sh.vangs[act.i]; commit(); render(); return openReview();
     case 'unloc': sh.locs = validLocs(sh).slice(0, 1); applyLocs(sh); commit(); render(); return openReview();
     case 'del': doc.sketch.shapes = shapes().filter((s) => s !== sh); commit(); render(); return openReview();
     case 'straighten': straighten(sh); commit(); render(); return openReview();
   }
 }
 function straighten(sh) {
-  const b = bbox(sh.pts); const D = Math.hypot(b.w, b.h); sh.smooth = false; sh.dims = {}; sh.angs = {};
+  const b = bbox(sh.pts); const D = Math.hypot(b.w, b.h); sh.smooth = false; sh.dims = {}; sh.angs = {}; sh.vangs = {};
   sh.pts = sh.closed ? snapClosed(cleanVerts(rdp([...sh.pts, sh.pts[0]], 0.03 * D).slice(0, -1), true, 0.03 * D)) : snapOpen(cleanVerts(rdp(sh.pts, 0.03 * D), false, 0.03 * D));
 }
 
@@ -1754,10 +1906,11 @@ function openSelSheet(h) {
     const p = sh.pts[h.i];
     openSheet(`<div class="head"><div><h2>Point</h2><div class="sub">Position from sketch origin</div></div>${closeBtn}</div>
       <div class="fields">${field('v-x', 'X', fmt(p[0]))}${field('v-y', 'Y', fmt(p[1]))}</div>
-      <div class="row"><button class="btn primary grow" id="v-apply">Apply</button><button class="btn danger" id="v-del"><svg class="i"><use href="#i-trash"/></svg>Delete point</button></div>`, { kind: 'vertex', id: sh.id });
-    const apply = () => { const x = num($('#v-x').value), y = num($('#v-y').value); if (!Number.isFinite(x) || !Number.isFinite(y)) return toast('Enter numbers for X and Y.'); sh.pts[h.i] = [x, y]; const n = edgeCount(sh); [h.i, (h.i - 1 + sh.pts.length) % sh.pts.length].forEach((k) => { if (k < n) { delete sh.dims[k]; delete sh.angs[k]; } }); applyAllLocs(); commit(); render(); toast('Point moved'); };
+      <div class="row"><button class="btn primary grow" id="v-apply">Apply</button>${canAngle(sh, h.i) ? '<button class="btn" id="v-ang">Angle</button>' : ''}<button class="btn danger" id="v-del"><svg class="i"><use href="#i-trash"/></svg>Delete point</button></div>`, { kind: 'vertex', id: sh.id });
+    const apply = () => { const x = num($('#v-x').value), y = num($('#v-y').value); if (!Number.isFinite(x) || !Number.isFinite(y)) return toast('Enter numbers for X and Y.'); sh.pts[h.i] = [x, y]; const n = edgeCount(sh); [h.i, (h.i - 1 + sh.pts.length) % sh.pts.length].forEach((k) => { if (k < n) { delete sh.dims[k]; delete sh.angs[k]; } }); if (sh.vangs) [h.i - 1, h.i, h.i + 1].forEach((k) => delete sh.vangs[(k + sh.pts.length) % sh.pts.length]); applyAllLocs(); commit(); render(); toast('Point moved'); };
     $('#v-apply').onclick = apply; onEnter($('#v-x'), apply); onEnter($('#v-y'), apply);
-    $('#v-del').onclick = () => { if (sh.pts.length <= (sh.closed ? 3 : 2)) doc.sketch.shapes = shapes().filter((s) => s !== sh); else { sh.pts.splice(h.i, 1); sh.dims = {}; sh.angs = {}; sh.locs = []; } sel = null; applyAllLocs(); commit(); closeSheet(); render(); };
+    if ($('#v-ang')) $('#v-ang').onclick = () => editVertexAngle(sh, h.i);
+    $('#v-del').onclick = () => { if (sh.pts.length <= (sh.closed ? 3 : 2)) doc.sketch.shapes = shapes().filter((s) => s !== sh); else { sh.pts.splice(h.i, 1); sh.dims = {}; sh.angs = {}; sh.vangs = {}; sh.locs = []; } sel = null; applyAllLocs(); commit(); closeSheet(); render(); };
     return;
   }
   const P = sh.type === 'poly' && !sh.smooth && sh.closed ? polyAnalysis(sh) : null; const pos = posAnalysis(sh);
@@ -2371,8 +2524,8 @@ function setMode(m) {
 }
 function updateFab() { const b = $('#btn-review'); b.hidden = mode !== 'sketch' || sheet.classList.contains('open') || !shapes().length; }
 const HINTS = {
-  draw: '<b>Draw</b> shapes, <b>write numbers</b> beside edges, <b>tap</b> an edge to type a size, <b>scribble</b> to delete. Two-finger tap = undo.',
-  dim: '<b>Write a number</b> next to a line, tap a line to type it, or <b>drag from a hole to an edge</b> to set its distance.',
+  draw: '<b>Draw</b> shapes, <b>write numbers</b> beside edges, <b>tap</b> an edge or a corner to set a size or angle, <b>scribble</b> to delete. Two-finger tap = undo.',
+  dim: '<b>Write a number</b> next to a line, or <b>60°</b> in a corner. <b>Drag from one line to the next</b> for the angle between them, or <b>from a hole to an edge</b> for its distance.',
   select: '<b>Tap</b> a point, edge or shape to edit it. Drag to move. Drag empty paper to pan.',
   line: '<b>Drag</b> to draw a straight line. Ends join up; close the loop to make an outline.',
   rect: '<b>Drag</b> from corner to corner. Snaps to the grid.',
@@ -2443,6 +2596,7 @@ function showHelp() {
   <div class="help"><ol>
     <li><b>Draw</b> with your finger. Wobbly lines straighten and snap to 90° and 45°; end where you started to close an outline. Circles inside become holes.</li>
     <li><b>Write a number</b> right next to an edge, e.g. <b>80</b>. The first number scales the whole sketch; later ones reshape it. Or just <b>tap</b> an edge or circle and write or type the size.</li>
+    <li><b>Angles:</b> tap a corner, write the angle with a degree sign inside it (e.g. <b>60°</b>), or in Dimension mode drag from one line to the line it meets.</li>
     <li>Watch the status chip. <b>Amber</b> edges still need a size; grey numbers in brackets are worked out from your other sizes.</li>
     <li>For holes, the app asks for two distances from the outline's edges. In Dimension mode you can also <b>drag from a hole to an edge</b>.</li>
     <li>Tap <b>Review</b>: you see a 3D preview and what is missing. <b>Add missing dimensions</b> walks you through each one; <b>Confirm</b> builds the part.</li>
@@ -2535,7 +2689,7 @@ new ResizeObserver(() => { if (mode === 'sketch') resizeSketch(); }).observe($('
 let saved = null; try { saved = JSON.parse(store.get('napkin.doc.v2') || store.get('napkin.doc.v1') || 'null'); } catch {}
 resizeSketch();
 if (saved && saved.doc) {
-  loadDoc(saved.doc); shapes().forEach((s) => { s.dims = s.dims || {}; s.angs = s.angs || {}; s.locs = s.locs || []; }); if (saved.view) view = saved.view;
+  loadDoc(saved.doc); shapes().forEach((s) => { s.dims = s.dims || {}; s.angs = s.angs || {}; s.vangs = s.vangs || {}; s.locs = s.locs || []; }); if (saved.view) view = saved.view;
 } else loadExample();
 try { underlay = JSON.parse(store.get('napkin.underlay.v1') || 'null'); } catch { underlay = null; } loadUnderlayImg();
 hist.cur = serialize(); updateUndo(); updateStatus(); updateFab(); updateFaceChip(); render();
@@ -2543,7 +2697,7 @@ showHint(HINTS.draw, 8000);
 if (!saved) setTimeout(() => toast('Example loaded. Tap ⋯ › New project to start your own.', null, 5000), 600);
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http') && !window.claude && window.top === window.self) navigator.serviceWorker.register('sw.js').catch(() => {});
-window.__napkin = { _T: T, THREE, doc, Digits, recognize, setEdgeDim, buildRegions, analyzeSketch, view: () => view, toS, toW, exportModel, toSTL, runBoolean, computeFace, startFaceSketch, featureFromSketch, openReview, get dimHits() { return dimHits; }, get parts() { return doc.parts; }, get sketch() { return doc.sketch; }, get selFace() { return selFace; }, project(v) { const r = $('#view3d').getBoundingClientRect(); const q = new THREE.Vector3(...v).project(T.camera); return [r.left + (q.x + 1) / 2 * r.width, r.top + (1 - q.y) / 2 * r.height]; } };
+window.__napkin = { setVertexAngle, cornerAngle, polyAnalysis, solveShape, editVertexAngle, commit, _T: T, THREE, doc, Digits, recognize, setEdgeDim, buildRegions, analyzeSketch, view: () => view, toS, toW, exportModel, toSTL, runBoolean, computeFace, startFaceSketch, featureFromSketch, openReview, get dimHits() { return dimHits; }, get parts() { return doc.parts; }, get sketch() { return doc.sketch; }, get selFace() { return selFace; }, project(v) { const r = $('#view3d').getBoundingClientRect(); const q = new THREE.Vector3(...v).project(T.camera); return [r.left + (q.x + 1) / 2 * r.width, r.top + (1 - q.y) / 2 * r.height]; } };
 </script>
 </body>
 </html>

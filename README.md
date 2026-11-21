@@ -16,6 +16,7 @@ Everything runs in the browser, works offline once loaded, and can be installed 
 - **Tap** any edge, circle or dimension to open a number sheet with a **handwriting pad** (or the keyboard).
 - The first dimension scales the whole freehand sketch to real millimetres; later ones reshape it while keeping its angles.
 - In Dimension mode, **drag from a hole to an edge** to set its distance.
+- **Angles between lines**: tap a corner, write the angle with a degree sign inside it (e.g. `60°`), or in Dimension mode drag from one line to the line it meets. Angles are drawn as arcs; other corners and sizes stay put where they can.
 - Misread number? Tap **Fix** (the app learns your handwriting) or **Not a number** to turn the ink back into lines.
 
 **Fully-defined check, then confirm**
@@ -65,6 +66,7 @@ When the app is updated, opening it once while online fetches the new version.
 
 - **Shape recognition**: the stroke is resampled, simplified (Ramer–Douglas–Peucker), tested for a circle by radius variance, then edge directions are snapped and the loop is re-closed with a least-squares length adjustment.
 - **Dimensions**: edge directions stay fixed; dimensioned edge lengths are pinned and the remaining edges absorb the change with the smallest weighted adjustment that keeps the outline closed.
-- **Fully defined**: each outline's free edge lengths and free angles are unknowns of the closure equation Σ L·d = 0. The rank of its 2-row Jacobian gives the missing count, and a projection test tells which edges are already pinned (derived) or set twice (redundant). Holes and face features need two distances to non-parallel reference edges.
+- **Corner angles**: when a shape has corner angles, a small Newton solver moves the vertices as little as possible so every length, kept direction (horizontal/vertical sides) and corner angle holds at once. A corner angle between two square sides lets one of them turn (the non-horizontal one, else the shorter).
+- **Fully defined**: each outline's side lengths and free side directions are unknowns; the closure equation Σ L·d = 0, every length and every corner angle are rows. The rank gives the missing count, a projection test tells which sides are pinned (derived), and a size or angle that adds no rank, in the order you added them, is flagged as set twice. Holes and face features need two distances to non-parallel reference edges.
 - **Sketch on face**: the tapped triangle's coplanar neighbours form the face; their boundary edges become the reference outline in a 2D frame on that plane. The new feature is extruded along the face normal and combined with the part by CSG.
 - **Handwriting**: a $P point-cloud recognizer with built-in digit templates. Strokes are grouped into characters by horizontal overlap; a small low dot is a decimal point. Corrections are stored as personal templates in the browser.
