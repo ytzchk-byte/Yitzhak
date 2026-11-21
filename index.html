@@ -34,7 +34,10 @@
   --accent-ink: #ffffff;
   --accent-soft: #e3eafc;
   --markup: #cf4419;
+  --warn: #c07400;
+  --ok: #18834a;
   --fill: rgba(31, 79, 209, 0.07);
+  --face: rgba(94, 106, 123, 0.10);
   --danger: #c22f2f;
   --shadow: 0 6px 24px rgba(20, 30, 50, 0.14);
   --f-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
@@ -45,14 +48,16 @@
   :root:not([data-theme="light"]) {
     --bg: #0f131a; --panel: #181d26; --paper: #131821; --grid: #1f2732; --grid-major: #2b3544; --axis: #3a4c74;
     --ink: #e5eaf2; --muted: #95a1b4; --line: #2a3341; --accent: #7398ff; --accent-ink: #0a0f1d; --accent-soft: #1f2a46;
-    --markup: #ff8a5b; --fill: rgba(115, 152, 255, 0.10); --danger: #ff6b6b; --shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+    --markup: #ff8a5b; --warn: #f2b34a; --ok: #4cc38a; --fill: rgba(115, 152, 255, 0.10); --face: rgba(149, 161, 180, 0.12);
+    --danger: #ff6b6b; --shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #0f131a; --panel: #181d26; --paper: #131821; --grid: #1f2732; --grid-major: #2b3544; --axis: #3a4c74;
   --ink: #e5eaf2; --muted: #95a1b4; --line: #2a3341; --accent: #7398ff; --accent-ink: #0a0f1d; --accent-soft: #1f2a46;
-  --markup: #ff8a5b; --fill: rgba(115, 152, 255, 0.10); --danger: #ff6b6b; --shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+  --markup: #ff8a5b; --warn: #f2b34a; --ok: #4cc38a; --fill: rgba(115, 152, 255, 0.10); --face: rgba(149, 161, 180, 0.12);
+  --danger: #ff6b6b; --shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
   color-scheme: dark;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -74,26 +79,28 @@ header {
 }
 .brand { display: flex; align-items: center; gap: 8px; font: 600 18px/1 var(--f-display); letter-spacing: 0.01em; white-space: nowrap; }
 .brand svg { width: 26px; height: 26px; }
-.brand small { font: 500 10px/1 var(--f-mono); color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
 .seg { display: inline-flex; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 3px; gap: 2px; }
 .seg button { border: 0; background: transparent; padding: 6px 14px; border-radius: 7px; font-weight: 600; cursor: pointer; color: var(--muted); }
 .seg button[aria-pressed="true"] { background: var(--panel); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
 header .seg { margin-left: auto; }
-.iconbtn { border: 0; background: transparent; width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; cursor: pointer; color: var(--ink); }
+.iconbtn { border: 0; background: transparent; width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; cursor: pointer; color: var(--ink); flex: none; }
 .iconbtn:active { background: var(--bg); }
 .iconbtn[disabled] { opacity: .35; }
 
 /* Stage */
 #stage { position: relative; overflow: hidden; background: var(--paper); }
-#stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-.hint {
-  position: absolute; top: 10px; left: max(12px, env(safe-area-inset-left, 0px)); right: 64px; z-index: 3;
-  display: flex; gap: 8px; align-items: flex-start; pointer-events: none;
-}
-.hint p { margin: 0; max-width: 34em; padding: 7px 11px; background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line); border-radius: 10px; color: var(--muted); font-size: 12.5px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
-.hint p b { color: var(--ink); font-weight: 600; }
-.chip { font: 600 11px/1 var(--f-mono); letter-spacing: .04em; padding: 6px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
-.chip.warn { background: color-mix(in srgb, var(--markup) 15%, var(--panel)); color: var(--markup); }
+#stage > canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+.hud { position: absolute; top: 10px; left: max(12px, env(safe-area-inset-left, 0px)); right: 64px; z-index: 3; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; pointer-events: none; }
+.hud .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.hud p { margin: 0; max-width: 34em; padding: 7px 11px; background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line); border-radius: 10px; color: var(--muted); font-size: 12.5px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+.hud p b { color: var(--ink); font-weight: 600; }
+.chip { pointer-events: auto; border: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font: 600 11px/1 var(--f-mono); letter-spacing: .05em; padding: 7px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+.chip .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.chip.warn { background: color-mix(in srgb, var(--warn) 16%, var(--panel)); color: var(--warn); }
+.chip.ok { background: color-mix(in srgb, var(--ok) 16%, var(--panel)); color: var(--ok); }
+.chip.bad { background: color-mix(in srgb, var(--danger) 14%, var(--panel)); color: var(--danger); }
+.chip.face { background: var(--panel); color: var(--ink); border: 1px solid var(--line); }
+.chip.face svg { width: 14px; height: 14px; }
 .side { position: absolute; right: max(10px, env(safe-area-inset-right, 0px)); top: 10px; z-index: 3; display: flex; flex-direction: column; gap: 6px; }
 .side .iconbtn { background: var(--panel); border: 1px solid var(--line); box-shadow: 0 2px 8px rgba(0,0,0,.08); }
 .views { position: absolute; right: max(10px, env(safe-area-inset-right, 0px)); top: 10px; z-index: 3; display: flex; flex-direction: column; gap: 6px; }
@@ -115,12 +122,11 @@ nav.toolbar::-webkit-scrollbar { display: none; }
 .tool { flex: 1 0 58px; min-width: 58px; border: 0; background: transparent; border-radius: 11px; padding: 6px 4px 5px; display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: pointer; color: var(--muted); font-size: 11px; font-weight: 500; }
 .tool[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
 .tool:active { background: var(--bg); }
-.tool[disabled] { opacity: .35; }
 .tool.sep { flex: 0 0 1px; min-width: 1px; padding: 0; margin: 8px 3px; background: var(--line); }
 
 /* Sheet */
 .sheet {
-  position: absolute; left: 0; right: 0; bottom: 0; z-index: 8; max-height: 72%; overflow-y: auto;
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 8; max-height: 74%; overflow-y: auto;
   background: var(--panel); border-top: 1px solid var(--line); border-radius: 18px 18px 0 0; box-shadow: var(--shadow);
   padding: 8px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px));
   transform: translateY(105%); transition: transform .22s ease; touch-action: pan-y;
@@ -138,8 +144,7 @@ nav.toolbar::-webkit-scrollbar { display: none; }
 .field .box:focus-within { border-color: var(--accent); }
 .field input { width: 100%; min-width: 0; border: 0; background: transparent; padding: 9px 0; font: 500 16px/1 var(--f-mono); font-variant-numeric: tabular-nums; outline: none; }
 .field .unit { color: var(--muted); font: 500 12px/1 var(--f-mono); }
-.field input[type="text"] { font-family: var(--f-body); }
-.big input { font-size: 26px; padding: 12px 0; }
+.big input { font-size: 26px; padding: 10px 0; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; }
 .btn { border: 1px solid var(--line); background: var(--panel); border-radius: 11px; padding: 10px 14px; font-weight: 600; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
 .btn svg.i { width: 18px; height: 18px; }
@@ -148,13 +153,43 @@ nav.toolbar::-webkit-scrollbar { display: none; }
 .btn.danger { color: var(--danger); }
 .btn.grow { flex: 1; justify-content: center; }
 .btn:active { transform: translateY(1px); }
-.btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.btn[disabled] { opacity: .4; pointer-events: none; }
 .swatches { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
 .swatches button { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--panel); outline: 1px solid var(--line); cursor: pointer; }
 .swatches button[aria-pressed="true"] { outline: 2px solid var(--accent); }
 .note { color: var(--muted); font-size: 12.5px; margin: 0 0 12px; }
+.note.warn { color: var(--warn); }
 .section-label { font: 600 10.5px/1 var(--f-mono); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); margin: 4px 0 8px; }
 input[type="range"] { width: 100%; accent-color: var(--accent); }
+
+/* Handwriting pad */
+.padwrap { position: relative; margin-bottom: 12px; }
+canvas.pad { display: block; width: 100%; height: 112px; border: 1.5px dashed var(--line); border-radius: 12px; background: var(--paper); touch-action: none; cursor: crosshair; }
+.padwrap .iconbtn { position: absolute; right: 4px; top: 4px; width: 34px; height: 34px; color: var(--muted); }
+
+/* Review */
+.status { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; margin-bottom: 10px; }
+.status svg.i { width: 22px; height: 22px; margin-top: 1px; }
+.status b { display: block; font-size: 15px; }
+.status span { font-size: 12.5px; opacity: .85; }
+.status.ok { background: color-mix(in srgb, var(--ok) 12%, var(--panel)); color: var(--ok); }
+.status.warn { background: color-mix(in srgb, var(--warn) 13%, var(--panel)); color: var(--warn); }
+.status.bad { background: color-mix(in srgb, var(--danger) 12%, var(--panel)); color: var(--danger); }
+.status.idle { background: var(--bg); color: var(--muted); }
+.preview { height: 170px; border-radius: 12px; background: var(--paper); border: 1px solid var(--line); overflow: hidden; margin-bottom: 12px; position: relative; }
+.preview canvas { display: block; width: 100%; height: 100%; }
+.issues { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.issues li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; font-size: 13.5px; }
+.issues li .tag { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--muted); }
+.issues li.need .tag { background: var(--warn); }
+.issues li.over .tag { background: var(--danger); }
+.issues li.ok .tag { background: var(--ok); }
+.issues li span { flex: 1; min-width: 0; }
+details.more { margin-bottom: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+details.more summary { cursor: pointer; font-weight: 600; color: var(--muted); padding: 4px 0 10px; list-style-position: inside; }
+details.more[open] summary { color: var(--ink); }
+.facebox { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border-radius: 12px; background: var(--accent-soft); margin-bottom: 12px; }
+.facebox div { flex: 1; min-width: 140px; font-size: 13.5px; }
 
 /* Menu */
 .menu { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 54px); right: max(10px, env(safe-area-inset-right, 0px)); z-index: 20; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 6px; min-width: 220px; }
@@ -164,19 +199,17 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .menu svg.i { width: 18px; height: 18px; color: var(--muted); }
 
 /* Toast */
-.toast { pointer-events: none; position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%); z-index: 30; display: flex; gap: 12px; align-items: center; background: var(--ink); color: var(--panel); padding: 10px 14px; border-radius: 12px; box-shadow: var(--shadow); font-size: 13.5px; max-width: calc(100% - 32px); }
+.toast { pointer-events: none; position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%); z-index: 30; display: flex; gap: 10px; align-items: center; background: var(--ink); color: var(--panel); padding: 10px 14px; border-radius: 12px; box-shadow: var(--shadow); font-size: 13.5px; max-width: calc(100% - 32px); }
 .toast button { pointer-events: auto; border: 0; background: transparent; color: var(--accent-soft); font-weight: 700; padding: 2px 4px; cursor: pointer; white-space: nowrap; }
 .toast span { min-width: 0; }
 
 .help { line-height: 1.5; }
-.help ol { padding-left: 20px; margin: 0 0 12px; }
+.help ol, .help ul { padding-left: 20px; margin: 0 0 12px; }
 .help li { margin-bottom: 6px; }
-.help kbd { font: 600 11px var(--f-mono); background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; }
+.help h3 { font: 600 14px/1.2 var(--f-display); margin: 14px 0 6px; }
 
-@media (max-width: 420px) {
-  .brand small { display: none; }
-  .seg button { padding: 6px 11px; }
-}
+@media (max-width: 460px) { .brand span { display: none; } header { gap: 4px; } }
+@media (max-width: 420px) { .seg button { padding: 6px 11px; } }
 @media (prefers-reduced-motion: reduce) { .sheet { transition: none; } }
 </style>
 </head>
@@ -211,13 +244,16 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
     <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.3a2.6 2.6 0 0 1 5 .9c0 1.8-2.5 2.3-2.5 3.8M12 17.2v.1"/></symbol>
     <symbol id="i-floor" viewBox="0 0 24 24"><path d="M12 4v10M8 10l4 4 4-4M4 19h16"/></symbol>
     <symbol id="i-rot" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v4h-4"/></symbol>
+    <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17v.1"/></symbol>
+    <symbol id="i-face" viewBox="0 0 24 24"><path d="M4 8l8-4 8 4-8 4z"/><path d="M4 8v8l8 4 8-4V8"/></symbol>
+    <symbol id="i-review" viewBox="0 0 24 24"><path d="M4 6h10M4 12h7M4 18h6"/><path d="M14 16l2.5 2.5L21 13"/></symbol>
     <symbol id="i-logo" viewBox="0 0 32 32"><rect x="2" y="2" width="28" height="28" rx="7" fill="var(--accent)" stroke="none"/><path d="M8 22.5c2-5 4.5-9.5 7.5-12.5 1.2 3.8 3.6 7.5 8.5 9" stroke="var(--accent-ink)" stroke-width="2.2" fill="none"/><path d="M8 25h16" stroke="var(--accent-ink)" stroke-width="1.6" stroke-dasharray="2 2"/></symbol>
   </defs>
 </svg>
 
 <div id="app">
   <header>
-    <div class="brand"><svg aria-hidden="true"><use href="#i-logo"/></svg><span>Napkin CAD</span><small id="unit-chip">mm</small></div>
+    <div class="brand"><svg aria-hidden="true"><use href="#i-logo"/></svg><span>Napkin CAD</span></div>
     <div class="seg" role="group" aria-label="Workspace">
       <button id="mode-sketch" aria-pressed="true">Sketch</button>
       <button id="mode-3d" aria-pressed="false">3D</button>
@@ -230,7 +266,13 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
   <main id="stage">
     <canvas id="sketch"></canvas>
     <canvas id="view3d" hidden></canvas>
-    <div class="hint" id="hint"><p id="hint-text"></p><span class="chip" id="scale-chip" hidden></span></div>
+    <div class="hud" id="hud">
+      <div class="chips">
+        <button class="chip face" id="face-chip" hidden><svg class="i"><use href="#i-face"/></svg><span id="face-chip-text"></span><svg class="i"><use href="#i-x"/></svg></button>
+        <button class="chip" id="status-chip" hidden><span class="dot"></span><span id="status-text"></span></button>
+      </div>
+      <p id="hint-text"></p>
+    </div>
     <div class="side" id="sketch-side">
       <button class="iconbtn" id="btn-fit" aria-label="Fit sketch to screen"><svg class="i"><use href="#i-fit"/></svg></button>
     </div>
@@ -241,7 +283,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
       <button data-view="right">RIGHT</button>
       <button data-view="fit">FIT</button>
     </div>
-    <button class="fab" id="btn-make3d"><svg class="i"><use href="#i-cube"/></svg>Make 3D</button>
+    <button class="fab" id="btn-review"><svg class="i"><use href="#i-review"/></svg><span>Review</span></button>
     <section class="sheet" id="sheet" aria-live="polite"></section>
     <div class="menu" id="menu" hidden>
       <button data-act="new"><svg class="i"><use href="#i-plus"/></svg>New project</button>
@@ -255,7 +297,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
       <hr>
       <button data-act="help"><svg class="i"><use href="#i-help"/></svg>How it works</button>
     </div>
-    <div class="toast" id="toast" hidden><span id="toast-text"></span><button id="toast-btn" hidden></button></div>
+    <div class="toast" id="toast" hidden><span id="toast-text"></span><span id="toast-acts"></span></div>
   </main>
 
   <nav class="toolbar" id="tb-sketch" aria-label="Sketch tools">
@@ -313,12 +355,14 @@ const store = {
   del(k) { try { localStorage.removeItem(k); } catch {} },
 };
 const buzz = (ms = 8) => { try { navigator.vibrate && navigator.vibrate(ms); } catch {} };
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 const V = {
   add: (a, b) => [a[0] + b[0], a[1] + b[1]],
   sub: (a, b) => [a[0] - b[0], a[1] - b[1]],
   mul: (a, k) => [a[0] * k, a[1] * k],
   dot: (a, b) => a[0] * b[0] + a[1] * b[1],
+  cross: (a, b) => a[0] * b[1] - a[1] * b[0],
   len: (a) => Math.hypot(a[0], a[1]),
   dist: (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]),
   norm: (a) => { const l = Math.hypot(a[0], a[1]) || 1; return [a[0] / l, a[1] / l]; },
@@ -328,6 +372,21 @@ function distToSeg(p, a, b) {
   const ab = V.sub(b, a), l2 = V.dot(ab, ab);
   const t = l2 ? clamp(V.dot(V.sub(p, a), ab) / l2, 0, 1) : 0;
   return V.dist(p, V.add(a, V.mul(ab, t)));
+}
+function segsCross(p1, p2, q1, q2) {
+  const d1 = V.cross(V.sub(p2, p1), V.sub(q1, p1)), d2 = V.cross(V.sub(p2, p1), V.sub(q2, p1));
+  const d3 = V.cross(V.sub(q2, q1), V.sub(p1, q1)), d4 = V.cross(V.sub(q2, q1), V.sub(p2, q1));
+  return d1 * d2 < 0 && d3 * d4 < 0;
+}
+function segRect(a, b, r) { // Liang–Barsky: does segment a-b touch rect {x0,y0,x1,y1}?
+  let t0 = 0, t1 = 1; const dx = b[0] - a[0], dy = b[1] - a[1];
+  const ps = [-dx, dx, -dy, dy], qs = [a[0] - r.x0, r.x1 - a[0], a[1] - r.y0, r.y1 - a[1]];
+  for (let i = 0; i < 4; i++) {
+    if (ps[i] === 0) { if (qs[i] < 0) return false; continue; }
+    const t = qs[i] / ps[i];
+    if (ps[i] < 0) { if (t > t1) return false; if (t > t0) t0 = t; } else { if (t < t0) return false; if (t < t1) t1 = t; }
+  }
+  return true;
 }
 function pathLen(pts) { let L = 0; for (let i = 1; i < pts.length; i++) L += V.dist(pts[i - 1], pts[i]); return L; }
 function bbox(pts) {
@@ -379,6 +438,7 @@ function cleanVerts(pts, closed, minEdge, minTurnDeg = 14) {
   }
   return p;
 }
+function centroid(pts) { let x = 0, y = 0; pts.forEach((p) => { x += p[0]; y += p[1]; }); return [x / pts.length, y / pts.length]; }
 
 /* =========================================================================
    Handwritten number recognition ($P point-cloud recognizer + digit templates)
@@ -438,22 +498,16 @@ const Digits = (() => {
 
   const templates = [];
   for (const [ch, variants] of Object.entries(DEFS)) for (const v of variants) templates.push({ ch, cloud: toCloud(v), user: false });
-  // learned templates (from corrections)
   try { const saved = JSON.parse(store.get('napkin.ink.v1') || '[]'); saved.forEach((t) => templates.push({ ch: t.ch, cloud: t.cloud, user: true })); } catch {}
 
   function classify(strokes) {
-    const cloud = toCloud(strokes); let best = null, second = Infinity;
-    for (const t of templates) {
-      const d = match(cloud, t.cloud) * (t.user ? 0.92 : 1);
-      if (!best || d < best.d) { if (best && best.ch !== t.ch) second = Math.min(second, best.d); best = { ch: t.ch, d }; }
-      else if (t.ch !== best.ch) second = Math.min(second, d);
-    }
-    return { ch: best.ch, score: best.d, margin: second - best.d, cloud };
+    const cloud = toCloud(strokes); let best = null;
+    for (const t of templates) { const d = match(cloud, t.cloud) * (t.user ? 0.92 : 1); if (!best || d < best.d) best = { ch: t.ch, d }; }
+    return { ch: best.ch, score: best.d, cloud };
   }
-
   // Split ink strokes into characters (strokes that overlap horizontally belong together), find decimal points.
   function segment(strokes) {
-    const boxes = strokes.map((s, i) => ({ i, s, b: bbox(s) }));
+    const boxes = strokes.map((s) => ({ s, b: bbox(s) }));
     const H = Math.max(...boxes.map((b) => b.b.h), 1);
     const groupBottom = Math.max(...boxes.map((b) => b.b.y1));
     const groupTop = Math.min(...boxes.map((b) => b.b.y0));
@@ -466,8 +520,8 @@ const Digits = (() => {
       if (isDot) { chars.push({ dot: true, strokes: [bx.s], x0: bx.b.x0, x1: bx.b.x1 }); continue; }
       const pad = Math.max(0, (0.22 * gh - bx.b.w) / 2);
       const x0 = bx.b.x0 - pad, x1 = bx.b.x1 + pad;
-      const last = [...chars].reverse().find((c) => !c.dot);
-      if (last && chars[chars.length - 1] === last) {
+      const last = chars[chars.length - 1];
+      if (last && !last.dot) {
         const ov = Math.min(x1, last.x1) - Math.max(x0, last.x0);
         if (ov > 0.18 * Math.min(x1 - x0, last.x1 - last.x0)) { last.strokes.push(bx.s); last.x0 = Math.min(last.x0, x0); last.x1 = Math.max(last.x1, x1); continue; }
       }
@@ -475,7 +529,6 @@ const Digits = (() => {
     }
     return chars;
   }
-
   function read(strokes) {
     const chars = segment(strokes);
     let text = '', worst = 0; const parts = [];
@@ -485,19 +538,19 @@ const Digits = (() => {
     }
     if (text.startsWith('.')) text = '0' + text;
     if (text.endsWith('.')) text = text.slice(0, -1);
-    return { text, value: num(text), confidence: worst < 4.5 ? 'ok' : 'low', parts };
+    return { text, value: num(text), confidence: worst < 4.5 ? 'ok' : 'low', worst, parts };
   }
-
   function learn(parts, corrected) {
-    const digits = corrected.replace(/[^0-9.]/g, '');
-    if (digits.length !== parts.length) return false;
+    const digits = String(corrected).replace(/[^0-9.]/g, '');
+    if (!parts || digits.length !== parts.length) return false;
     let saved = []; try { saved = JSON.parse(store.get('napkin.ink.v1') || '[]'); } catch {}
+    let n = 0;
     parts.forEach((p, i) => {
       const ch = digits[i]; if (p.dot || ch === '.' || ch === p.ch) return;
-      templates.push({ ch, cloud: p.cloud, user: true }); saved.push({ ch, cloud: p.cloud });
+      templates.push({ ch, cloud: p.cloud, user: true }); saved.push({ ch, cloud: p.cloud }); n++;
     });
     store.set('napkin.ink.v1', JSON.stringify(saved.slice(-150)));
-    return true;
+    return n > 0;
   }
   return { read, learn, _DEFS: DEFS };
 })();
@@ -506,68 +559,110 @@ const Digits = (() => {
    Document state + history
    ========================================================================= */
 const COLORS = ['#8ea7d8', '#d98f62', '#85b98f', '#cdb76c', '#a990cc', '#9ba5af'];
-let doc = { sketch: { shapes: [] }, parts: [] };
-let underlay = null; // { src, x, y, w, h, opacity }  (not in undo history)
-let underlayImg = null;
+const newSketch = () => ({ shapes: [], plane: null, refs: [] });
+let doc = { sketch: newSketch(), stash: null, parts: [] };
+let underlay = null; let underlayImg = null;
 const hist = { undo: [], redo: [], cur: null };
-const serialize = () => JSON.stringify({ sketch: doc.sketch, parts: doc.parts.map(partData) });
+const serialize = () => JSON.stringify({ sketch: doc.sketch, stash: doc.stash, parts: doc.parts.map(partData) });
 function commit() {
   hist.undo.push(hist.cur); if (hist.undo.length > 80) hist.undo.shift();
-  hist.cur = serialize(); hist.redo = []; persist(); updateUndo(); updateFab(); if (!flashT) updateHint();
+  hist.cur = serialize(); hist.redo = []; persist(); updateUndo(); updateStatus(); updateFab();
+}
+function loadDoc(d) {
+  doc.sketch = Object.assign(newSketch(), d.sketch || {}); doc.stash = d.stash || null;
+  clearParts(); (d.parts || []).forEach((p) => addPart(p, false));
 }
 function restore(json) {
-  const d = JSON.parse(json);
-  doc.sketch = d.sketch; clearParts(); d.parts.forEach((p) => addPart(p, false));
-  sel = null; sel3 = null; closeSheet(); render(); refresh3DSelection(); persist(); updateUndo(); updateHint();
+  loadDoc(JSON.parse(json));
+  sel = null; sel3 = null; clearFace(); focus = null; closeSheet(); render(); refresh3DSelection(); persist(); updateUndo(); updateStatus(); updateFaceChip(); updateFab();
 }
 function undo() { if (!hist.undo.length) return; hist.redo.push(hist.cur); hist.cur = hist.undo.pop(); restore(hist.cur); }
 function redo() { if (!hist.redo.length) return; hist.undo.push(hist.cur); hist.cur = hist.redo.pop(); restore(hist.cur); }
 function updateUndo() { $('#btn-undo').disabled = !hist.undo.length; $('#btn-redo').disabled = !hist.redo.length; }
 let persistT = 0;
-function persist() {
-  clearTimeout(persistT);
-  persistT = setTimeout(() => {
-    store.set('napkin.doc.v1', JSON.stringify({ doc: JSON.parse(serialize()), view }));
-  }, 300);
-}
+function persist() { clearTimeout(persistT); persistT = setTimeout(() => store.set('napkin.doc.v2', JSON.stringify({ doc: JSON.parse(serialize()), view })), 300); }
 
 /* =========================================================================
-   Sketch view + rendering
+   Sketch model helpers
    ========================================================================= */
 const sk = { cv: $('#sketch'), ctx: null, W: 0, H: 0, dpr: 1 };
 sk.ctx = sk.cv.getContext('2d');
-let view = { cx: 40, cy: 25, s: 4 }; // world (mm) at screen center, px per mm
+let view = { cx: 40, cy: 25, s: 4 };
 const toS = (p) => [sk.W / 2 + (p[0] - view.cx) * view.s, sk.H / 2 - (p[1] - view.cy) * view.s];
 const toW = (q) => [view.cx + (q[0] - sk.W / 2) / view.s, view.cy - (q[1] - sk.H / 2) / view.s];
 let tok = {};
 function readTokens() {
   const cs = getComputedStyle(document.documentElement);
-  for (const k of ['paper', 'grid', 'grid-major', 'axis', 'ink', 'muted', 'accent', 'markup', 'fill', 'panel', 'bg', 'line', 'danger']) tok[k] = cs.getPropertyValue('--' + k).trim();
+  for (const k of ['paper', 'grid', 'grid-major', 'axis', 'ink', 'muted', 'accent', 'markup', 'fill', 'face', 'panel', 'bg', 'line', 'danger', 'warn', 'ok']) tok[k] = cs.getPropertyValue('--' + k).trim();
   tok.mono = cs.getPropertyValue('--f-mono').trim() || 'monospace';
 }
 let tool = 'draw';
-let sel = null; // {kind:'vertex'|'edge'|'shape', id, i}
-const live = { ink: null, preview: null, handwriting: [] };
+let sel = null;          // {kind:'vertex'|'edge'|'shape', id, i}
+let focus = null;        // highlighted target while a number sheet is open
+const live = { ink: null, preview: null, handwriting: [], inkSource: 'dim' };
+let dimHits = [];        // label hit boxes rebuilt every frame
 let rq = 0;
 function render() { if (!rq) rq = requestAnimationFrame(() => { rq = 0; drawSketch(); }); }
 
-function resizeSketch() {
-  const r = sk.cv.getBoundingClientRect(); sk.dpr = Math.min(window.devicePixelRatio || 1, 3);
-  sk.W = r.width; sk.H = r.height; sk.cv.width = Math.round(r.width * sk.dpr); sk.cv.height = Math.round(r.height * sk.dpr); render();
-}
-function gridSteps() {
-  const opts = [[0.5, 5], [1, 10], [2, 10], [5, 50], [10, 100], [20, 100], [50, 500], [100, 1000], [200, 1000]];
-  for (const o of opts) if (o[0] * view.s >= 9) return o; return opts[opts.length - 1];
-}
 const shapes = () => doc.sketch.shapes;
+const refs = () => doc.sketch.refs || [];
 const byId = (id) => shapes().find((s) => s.id === id);
 function edgeCount(sh) { return sh.type !== 'poly' ? 0 : sh.closed ? sh.pts.length : sh.pts.length - 1; }
 function edgePts(sh, i) { return [sh.pts[i], sh.pts[(i + 1) % sh.pts.length]]; }
 const isClosedShape = (sh) => sh.type === 'circle' || (sh.closed && sh.pts.length >= 3);
 const shapeOutline = (sh) => sh.type === 'circle' ? Array.from({ length: 48 }, (_, k) => [sh.c[0] + sh.r * Math.cos((k / 48) * Math.PI * 2), sh.c[1] + sh.r * Math.sin((k / 48) * Math.PI * 2)]) : sh.pts;
 const shapeArea = (sh) => sh.type === 'circle' ? Math.PI * sh.r * sh.r : Math.abs(signedArea(sh.pts));
-function anyDims() { return shapes().some((s) => (s.type === 'circle' ? s.dim != null : Object.keys(s.dims || {}).length > 0)); }
-function sketchCalibrated() { return anyDims() || shapes().some((s) => s.precise); }
+function anyDims() { return shapes().some((s) => (s.type === 'circle' ? s.dim != null : Object.keys(s.dims || {}).length > 0) || (s.locs || []).length); }
+function sketchCalibrated() { return !!doc.sketch.plane || anyDims() || shapes().some((s) => s.precise); }
+function gridSteps() {
+  const opts = [[0.5, 5], [1, 10], [2, 10], [5, 50], [10, 100], [20, 100], [50, 500], [100, 1000], [200, 1000]];
+  for (const o of opts) if (o[0] * view.s >= 9) return o; return opts[opts.length - 1];
+}
+// Reference lines: an edge of a sketch shape ({id, i}) or of the face outline ({id:'ref:k', i})
+function refLine(to) {
+  if (!to) return null; let a, b;
+  if (String(to.id).startsWith('ref:')) { const r = refs()[+to.id.slice(4)]; if (!r) return null; const n = r.pts.length; if (to.i >= (r.closed ? n : n - 1)) return null; a = r.pts[to.i]; b = r.pts[(to.i + 1) % n]; }
+  else { const sh = byId(to.id); if (!sh || sh.type !== 'poly' || to.i >= edgeCount(sh)) return null; [a, b] = edgePts(sh, to.i); }
+  const L = V.dist(a, b); if (L < 1e-9) return null;
+  return { a, b, dir: V.mul(V.sub(b, a), 1 / L) };
+}
+function allRefLines() { const out = []; refs().forEach((r, k) => { const n = r.closed ? r.pts.length : r.pts.length - 1; for (let i = 0; i < n; i++) out.push({ id: 'ref:' + k, i }); }); return out; }
+function containerOf(sh) {
+  const probe = sh.type === 'circle' ? sh.c : sh.pts[0];
+  return shapes().filter((o) => o !== sh && isClosedShape(o) && shapeArea(o) > shapeArea(sh) && pointInPoly(probe, shapeOutline(o))).sort((a, b) => shapeArea(a) - shapeArea(b))[0] || null;
+}
+function needsPosition(sh) { if (sh.type === 'poly' && !sh.closed) return false; return !!doc.sketch.plane || !!containerOf(sh); }
+function candidateLines(sh) {
+  const c = containerOf(sh); const out = [];
+  if (c && c.type === 'poly' && !c.smooth) for (let i = 0; i < edgeCount(c); i++) out.push({ id: c.id, i });
+  if (doc.sketch.plane) out.push(...allRefLines());
+  return out;
+}
+function locAnchor(sh, l) { return l.j < 0 || sh.type === 'circle' ? sh.c : sh.pts[l.j]; }
+function validLocs(sh) {
+  sh.locs = (sh.locs || []).filter((l) => refLine(l.to) && (sh.type === 'circle' || (l.j >= 0 && l.j < sh.pts.length)));
+  return sh.locs;
+}
+function locNormal(l) { const L = refLine(l.to); return { n: V.mul([-L.dir[1], L.dir[0]], l.side), a: L.a, dir: L.dir }; }
+function locDistance(sh, l) { const { n, a } = locNormal(l); return V.dot(V.sub(locAnchor(sh, l), a), n); }
+function translateShape(sh, d) { if (sh.type === 'circle') sh.c = V.add(sh.c, d); else sh.pts = sh.pts.map((p) => V.add(p, d)); }
+function applyLocs(sh) {
+  const locs = validLocs(sh); if (!locs.length) return;
+  const l1 = locs[0]; const A = locNormal(l1);
+  const r1 = l1.d - V.dot(V.sub(locAnchor(sh, l1), A.a), A.n);
+  const l2 = locs.find((l, k) => k > 0 && Math.abs(V.cross(locNormal(l).dir, A.dir)) > 0.05);
+  let t;
+  if (l2) {
+    const B = locNormal(l2); const r2 = l2.d - V.dot(V.sub(locAnchor(sh, l2), B.a), B.n);
+    const det = A.n[0] * B.n[1] - A.n[1] * B.n[0];
+    t = [(r1 * B.n[1] - A.n[1] * r2) / det, (A.n[0] * r2 - B.n[0] * r1) / det];
+  } else t = V.mul(A.n, r1);
+  translateShape(sh, t);
+}
+function applyAllLocs() {
+  // containers first (shapes with larger area), so nested positions follow their outline
+  [...shapes()].sort((a, b) => shapeArea(b) - shapeArea(a)).forEach((s) => { if ((s.locs || []).length) applyLocs(s); });
+}
 
 // Regions: outer boundaries with their holes (one level of nesting, alternating).
 function buildRegions(list = shapes()) {
@@ -584,50 +679,148 @@ function buildRegions(list = shapes()) {
   return outers;
 }
 
+/* =========================================================================
+   Definition analysis: which sizes and positions are fixed by dimensions
+   ========================================================================= */
+const isAxisDir = (d) => { const a = Math.atan2(d[1], d[0]); const k = Math.round(a / (Math.PI / 4)) * (Math.PI / 4); return Math.abs(a - k) < 0.004; };
+function polyDirs(sh) {
+  const n = edgeCount(sh), dirs = [], L = [];
+  for (let k = 0; k < n; k++) { const [a, b] = edgePts(sh, k); const e = V.sub(b, a); L.push(V.len(e)); dirs.push(V.len(e) > 1e-9 ? V.norm(e) : [1, 0]); }
+  return { n, dirs, L };
+}
+// Orthonormal basis of the row space of a 2×m matrix given as columns; reports which unknowns are pinned.
+function rowspace(cols) {
+  const r1 = cols.map((c) => c[0]), r2 = cols.map((c) => c[1]);
+  const scale = Math.max(1e-9, ...cols.map((c) => Math.hypot(c[0], c[1])));
+  const basis = []; const n1 = Math.hypot(...r1, 0);
+  if (n1 > 1e-7 * scale) basis.push(r1.map((x) => x / n1));
+  let w = r2.slice(); if (basis[0]) { const d = w.reduce((s, x, i) => s + x * basis[0][i], 0); w = w.map((x, i) => x - d * basis[0][i]); }
+  const n2 = Math.hypot(...w, 0); if (n2 > 1e-7 * scale) basis.push(w.map((x) => x / n2));
+  return { rank: basis.length, det: cols.map((_, k) => basis.reduce((s, b) => s + b[k] * b[k], 0) > 1 - 1e-6) };
+}
+function polyAnalysis(sh) {
+  const { n, dirs, L } = polyDirs(sh); const dims = sh.dims || {}, angs = sh.angs || {};
+  const unk = [];
+  for (let k = 0; k < n; k++) if (dims[k] == null) unk.push({ k, t: 'len', col: dirs[k] });
+  for (let k = 0; k < n; k++) if (angs[k] == null && !isAxisDir(dirs[k])) unk.push({ k, t: 'ang', col: [-dirs[k][1] * L[k], dirs[k][0] * L[k]] });
+  const R = rowspace(unk.map((u) => u.col));
+  const dof = unk.length - R.rank;
+  const edges = new Array(n).fill('dim'), angState = dirs.map((d, k) => (angs[k] != null ? 'set' : isAxisDir(d) ? 'axis' : 'derived'));
+  unk.forEach((u, ix) => { if (u.t === 'len') edges[u.k] = R.det[ix] ? 'derived' : 'free'; else angState[u.k] = R.det[ix] ? 'derived' : 'free'; });
+  const red = [];
+  for (let k = 0; k < n; k++) if (dims[k] != null) { const R2 = rowspace([...unk.map((u) => u.col), dirs[k]]); if (R2.det[unk.length]) { edges[k] = 'over'; red.push(k); } }
+  const freeLen = unk.filter((u, ix) => u.t === 'len' && !R.det[ix]).map((u) => u.k);
+  const freeAng = unk.filter((u, ix) => u.t === 'ang' && !R.det[ix]).map((u) => u.k);
+  const pri = (k) => (Math.abs(dirs[k][1]) < 0.01 ? 3 : Math.abs(dirs[k][0]) < 0.01 ? 2 : 1) * 1e6 + L[k];
+  freeLen.sort((a, b) => pri(b) - pri(a));
+  const suggest = freeLen.length ? { t: 'len', k: freeLen[0] } : freeAng.length ? { t: 'ang', k: freeAng[0] } : null;
+  return { dof, edges, angState, red, suggest };
+}
+function posAnalysis(sh) {
+  if (!needsPosition(sh)) return { need: false, have: 0 };
+  const locs = validLocs(sh); let have = 0; let over = false;
+  if (locs.length) {
+    have = 1; const d0 = refLine(locs[0].to).dir;
+    for (let k = 1; k < locs.length; k++) { const dk = refLine(locs[k].to).dir; if (Math.abs(V.cross(d0, dk)) > 0.05 && have < 2) have = 2; else over = true; }
+  }
+  return { need: true, have, over };
+}
+function analyzeSketch() {
+  const A = { polys: new Map(), pos: new Map(), items: [], need: 0, over: 0, approx: 0, closed: 0, status: 'empty' };
+  const sh = shapes(); if (!sh.length) return A;
+  const calibrated = sketchCalibrated();
+  const outers = buildRegions();
+  A.closed = outers.length;
+  for (const s of sh) {
+    const name = s.type === 'circle' ? (containerOf(s) || doc.sketch.plane ? 'Hole' : 'Circle') : s.closed ? (containerOf(s) ? 'Cutout' : 'Outline') : 'Line';
+    if (s.type === 'poly' && !s.closed) { A.items.push({ lvl: 'info', text: 'Open line is not part of a solid', act: { t: 'del', id: s.id }, btn: 'Delete' }); continue; }
+    if (s.type === 'poly' && s.smooth) { A.approx++; A.items.push({ lvl: 'approx', text: `${name} is a freeform curve. Its size comes from your drawing.`, act: { t: 'straighten', id: s.id }, btn: 'Straighten' }); }
+    if (s.type === 'poly' && !s.smooth) {
+      const P = polyAnalysis(s); A.polys.set(s.id, P); A.need += P.dof;
+      if (P.dof) A.items.push({ lvl: 'need', text: `${name} needs ${plural(P.dof, 'more dimension')}`, act: { t: 'suggest', id: s.id }, btn: 'Add' });
+      for (const k of P.red) { A.over++; A.items.push({ lvl: 'over', text: `Length ${fmt(s.dims[k])} is already set by other dimensions`, act: { t: 'undim', id: s.id, k }, btn: 'Remove' }); }
+    }
+    if (s.type === 'circle' && s.dim == null) { A.need++; A.items.push({ lvl: 'need', text: `${name} diameter is not set`, act: { t: 'dia', id: s.id }, btn: 'Add' }); }
+    const pos = posAnalysis(s); A.pos.set(s.id, pos);
+    if (pos.need && pos.have < 2) { A.need += 2 - pos.have; A.items.push({ lvl: 'need', text: `${name} position needs ${plural(2 - pos.have, 'more distance')}`, act: { t: 'pos', id: s.id }, btn: 'Add' }); }
+    if (pos.over) { A.over++; A.items.push({ lvl: 'over', text: `${name} has two distances in the same direction`, act: { t: 'unloc', id: s.id }, btn: 'Fix' }); }
+  }
+  if (outers.length > 1 && !doc.sketch.plane) A.items.push({ lvl: 'info', text: `${outers.length} separate outlines. Their spacing comes from your drawing.` });
+  if (!calibrated) A.items.unshift({ lvl: 'need', text: 'Not to scale yet. Add any one real dimension.', act: { t: 'guide' }, btn: 'Add' });
+  A.status = !A.closed ? 'empty' : A.over ? 'over' : !calibrated ? 'unscaled' : A.need || A.approx ? 'under' : 'full';
+  return A;
+}
+
+/* =========================================================================
+   Rendering
+   ========================================================================= */
+function resizeSketch() {
+  const r = sk.cv.getBoundingClientRect(); sk.dpr = Math.min(window.devicePixelRatio || 1, 3);
+  sk.W = r.width; sk.H = r.height; sk.cv.width = Math.round(r.width * sk.dpr); sk.cv.height = Math.round(r.height * sk.dpr); render();
+}
 function drawSketch() {
-  const c = sk.ctx, W = sk.W, H = sk.H;
+  const c = sk.ctx, W = sk.W, H = sk.H; dimHits = [];
   c.setTransform(sk.dpr, 0, 0, sk.dpr, 0, 0);
   c.fillStyle = tok.paper; c.fillRect(0, 0, W, H);
   if (underlay && underlayImg) {
     const p = toS([underlay.x, underlay.y + underlay.h]);
     c.globalAlpha = underlay.opacity; c.drawImage(underlayImg, p[0], p[1], underlay.w * view.s, underlay.h * view.s); c.globalAlpha = 1;
   }
-  // grid
   const [minor, major] = gridSteps();
   const w0 = toW([0, H]), w1 = toW([W, 0]);
-  const lines = (step, color, width) => {
-    c.beginPath(); c.strokeStyle = color; c.lineWidth = width;
+  const lines = (step, color) => {
+    c.beginPath(); c.strokeStyle = color; c.lineWidth = 1;
     for (let x = Math.floor(w0[0] / step) * step; x <= w1[0]; x += step) { const sx = Math.round(toS([x, 0])[0]) + 0.5; c.moveTo(sx, 0); c.lineTo(sx, H); }
     for (let y = Math.floor(w0[1] / step) * step; y <= w1[1]; y += step) { const sy = Math.round(toS([0, y])[1]) + 0.5; c.moveTo(0, sy); c.lineTo(W, sy); }
     c.stroke();
   };
-  lines(minor, tok.grid, 1); lines(major, tok['grid-major'], 1);
+  lines(minor, tok.grid); lines(major, tok['grid-major']);
   const o = toS([0, 0]); c.strokeStyle = tok.axis; c.lineWidth = 1.5; c.beginPath(); c.moveTo(o[0], 0); c.lineTo(o[0], H); c.moveTo(0, o[1]); c.lineTo(W, o[1]); c.stroke();
 
-  // region fills
-  for (const r of buildRegions()) {
-    c.beginPath(); addPath(c, r.sh); r.holes.forEach((h) => addPath(c, h.sh)); c.fillStyle = tok.fill; c.fill('evenodd');
+  // face outline (sketching on a part face)
+  if (refs().length) {
+    c.beginPath(); refs().forEach((r) => { if (!r.closed) return; r.pts.forEach((p, i) => { const q = toS(p); i ? c.lineTo(q[0], q[1]) : c.moveTo(q[0], q[1]); }); c.closePath(); });
+    c.fillStyle = tok.face; c.fill('evenodd');
+    c.strokeStyle = tok.muted; c.lineWidth = 1.5; c.setLineDash([7, 5]); c.beginPath();
+    refs().forEach((r) => { r.pts.forEach((p, i) => { const q = toS(p); i ? c.lineTo(q[0], q[1]) : c.moveTo(q[0], q[1]); }); if (r.closed) c.closePath(); });
+    c.stroke(); c.setLineDash([]);
   }
-  // shapes
+
+  const A = analyzeSketch(); const calibrated = sketchCalibrated();
+  for (const r of buildRegions()) { c.beginPath(); addPath(c, r.sh); r.holes.forEach((h) => addPath(c, h.sh)); c.fillStyle = tok.fill; c.fill('evenodd'); }
   const showMeasure = ['dim', 'select', 'line', 'rect', 'circle'].includes(tool);
   for (const sh of shapes()) {
-    const selected = sel && sel.id === sh.id;
-    c.beginPath(); addPath(c, sh);
-    c.strokeStyle = selected && sel.kind === 'shape' ? tok.accent : tok.ink; c.lineWidth = selected && sel.kind === 'shape' ? 3 : 2; c.lineJoin = 'round'; c.lineCap = 'round'; c.stroke();
-    if (sh.type === 'poly' && !sh.smooth) {
-      c.fillStyle = tok.ink;
-      sh.pts.forEach((p) => { const q = toS(p); c.beginPath(); c.arc(q[0], q[1], 2.6, 0, Math.PI * 2); c.fill(); });
+    const selected = sel && sel.id === sh.id && sel.kind === 'shape';
+    const P = A.polys.get(sh.id); const pos = A.pos.get(sh.id);
+    c.lineJoin = 'round'; c.lineCap = 'round';
+    if (sh.type === 'poly' && !sh.smooth && P && calibrated && !selected) {
+      for (let i = 0; i < edgeCount(sh); i++) {
+        const [a, b] = edgePts(sh, i).map(toS); const st = P.edges[i];
+        c.strokeStyle = st === 'free' ? tok.warn : st === 'over' ? tok.danger : tok.ink; c.lineWidth = st === 'free' ? 2.5 : 2;
+        c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]); c.stroke();
+      }
+    } else {
+      const under = calibrated && sh.type === 'circle' && (sh.dim == null || (pos && pos.need && pos.have < 2));
+      c.beginPath(); addPath(c, sh);
+      c.strokeStyle = selected ? tok.accent : under ? tok.warn : tok.ink; c.lineWidth = selected ? 3 : under ? 2.5 : 2; c.stroke();
     }
+    if (sh.type === 'poly' && !sh.smooth) { c.fillStyle = tok.ink; sh.pts.forEach((p) => { const q = toS(p); c.beginPath(); c.arc(q[0], q[1], 2.6, 0, Math.PI * 2); c.fill(); }); }
     if (sh.type === 'circle') { const q = toS(sh.c); c.strokeStyle = tok.muted; c.lineWidth = 1; c.beginPath(); c.moveTo(q[0] - 5, q[1]); c.lineTo(q[0] + 5, q[1]); c.moveTo(q[0], q[1] - 5); c.lineTo(q[0], q[1] + 5); c.stroke(); }
-    drawDims(c, sh, showMeasure);
+    drawDims(c, sh, P, showMeasure, calibrated);
   }
-  // selection overlay
+  // selection & focus overlays
+  const hiEdge = (a, b, col, w = 5) => { const p = toS(a), q = toS(b); c.strokeStyle = col; c.globalAlpha = 0.85; c.lineWidth = w; c.beginPath(); c.moveTo(p[0], p[1]); c.lineTo(q[0], q[1]); c.stroke(); c.globalAlpha = 1; };
   if (sel) {
     const sh = byId(sel.id);
-    if (sh && sel.kind === 'edge') { const [a, b] = edgePts(sh, sel.i).map(toS); c.strokeStyle = tok.accent; c.lineWidth = 4; c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]); c.stroke(); }
+    if (sh && sel.kind === 'edge') hiEdge(...edgePts(sh, sel.i), tok.accent, 4);
     if (sh && sel.kind === 'vertex') { const q = toS(sh.pts[sel.i]); c.fillStyle = tok.accent; c.beginPath(); c.arc(q[0], q[1], 7, 0, Math.PI * 2); c.fill(); }
   }
-  // tool previews
+  if (focus) {
+    if (focus.edge) { const sh = byId(focus.edge.id); if (sh) hiEdge(...edgePts(sh, focus.edge.i), tok.accent); }
+    if (focus.line) { const L = refLine(focus.line); if (L) hiEdge(L.a, L.b, tok.accent); }
+    if (focus.point) { const q = toS(focus.point); c.fillStyle = tok.accent; c.beginPath(); c.arc(q[0], q[1], 6, 0, Math.PI * 2); c.fill(); }
+    if (focus.circle) { const sh = byId(focus.circle); if (sh) { const q = toS(sh.c); c.strokeStyle = tok.accent; c.lineWidth = 4; c.globalAlpha = 0.85; c.beginPath(); c.arc(q[0], q[1], sh.r * view.s, 0, Math.PI * 2); c.stroke(); c.globalAlpha = 1; } }
+  }
   const pv = live.preview;
   if (pv) {
     c.strokeStyle = tok.accent; c.lineWidth = 2; c.setLineDash([6, 4]); c.beginPath();
@@ -635,79 +828,100 @@ function drawSketch() {
     if (pv.type === 'rect') { const a = toS(pv.a), b = toS(pv.b); c.rect(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1])); }
     if (pv.type === 'circle') { const q = toS(pv.c); c.arc(q[0], q[1], pv.r * view.s, 0, Math.PI * 2); }
     c.stroke(); c.setLineDash([]);
-    if (pv.label) label(c, pv.labelAt ? toS(pv.labelAt) : [0, 0], pv.label, tok.accent, 0, true);
+    if (pv.label) label(c, toS(pv.labelAt), pv.label, tok.accent, 0, true);
     if (pv.snap) { const q = toS(pv.snap); c.strokeStyle = tok.accent; c.lineWidth = 2; c.beginPath(); c.arc(q[0], q[1], 9, 0, Math.PI * 2); c.stroke(); }
   }
-  // live ink
-  const ink = (pts, color, width) => { if (!pts || pts.length < 2) { if (pts && pts.length === 1) { c.fillStyle = color; c.beginPath(); c.arc(pts[0][0], pts[0][1], width / 2 + 0.5, 0, Math.PI * 2); c.fill(); } return; } c.strokeStyle = color; c.lineWidth = width; c.lineCap = 'round'; c.lineJoin = 'round'; c.beginPath(); c.moveTo(pts[0][0], pts[0][1]); for (const p of pts) c.lineTo(p[0], p[1]); c.stroke(); };
+  const ink = (pts, color, width) => {
+    if (!pts || !pts.length) return;
+    if (pts.length === 1) { c.fillStyle = color; c.beginPath(); c.arc(pts[0][0], pts[0][1], width / 2 + 0.5, 0, Math.PI * 2); c.fill(); return; }
+    c.strokeStyle = color; c.lineWidth = width; c.lineCap = 'round'; c.lineJoin = 'round'; c.beginPath(); c.moveTo(pts[0][0], pts[0][1]); for (const p of pts) c.lineTo(p[0], p[1]); c.stroke();
+  };
   for (const s of live.handwriting) ink(s, tok.markup, 3);
   if (live.ink) ink(live.ink, tool === 'dim' ? tok.markup : tok.ink, tool === 'dim' ? 3 : 2.5);
-  if (eraseTrail.length) ink(eraseTrail, tok.danger || tok.markup, 10);
+  if (eraseTrail.length) ink(eraseTrail, tok.danger, 10);
 }
 function addPath(c, sh) {
   if (sh.type === 'circle') { const q = toS(sh.c); c.moveTo(q[0] + sh.r * view.s, q[1]); c.arc(q[0], q[1], sh.r * view.s, 0, Math.PI * 2); return; }
   sh.pts.forEach((p, i) => { const q = toS(p); i ? c.lineTo(q[0], q[1]) : c.moveTo(q[0], q[1]); });
   if (sh.closed) c.closePath();
 }
-function label(c, at, text, color, angle = 0, bg = true, size = 12) {
+function label(c, at, text, color, angle = 0, bg = true, size = 12, hit = null) {
   c.save(); c.translate(at[0], at[1]); c.rotate(angle);
   c.font = `600 ${size}px ${tok.mono}`;
   const w = c.measureText(text).width;
   if (bg) { c.fillStyle = tok.paper; c.globalAlpha = 0.92; roundRect(c, -w / 2 - 4, -size / 2 - 3, w + 8, size + 6, 4); c.fill(); c.globalAlpha = 1; }
   c.fillStyle = color; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(text, 0, 0.5); c.restore();
+  if (hit) { const e = Math.max(w, size) / 2 + 8; const ex = Math.abs(Math.cos(angle)) * (w / 2 + 6) + Math.abs(Math.sin(angle)) * (size / 2 + 6), ey = Math.abs(Math.sin(angle)) * (w / 2 + 6) + Math.abs(Math.cos(angle)) * (size / 2 + 6); dimHits.push({ ...hit, x0: at[0] - Math.max(ex, 14), x1: at[0] + Math.max(ex, 14), y0: at[1] - Math.max(ey, 14), y1: at[1] + Math.max(ey, 14), e }); }
 }
 function roundRect(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
 function outwardNormal(sh, i) {
   const [a, b] = edgePts(sh, i); const d = V.norm(V.sub(b, a));
-  let n = [d[1], -d[0]]; // right side
+  let n = [d[1], -d[0]];
   if (sh.closed) { if (signedArea(sh.pts) < 0) n = [-n[0], -n[1]]; } else n = [-d[1], d[0]];
-  return [n[0], -n[1]]; // screen space (y flipped)
-}
-function drawDims(c, sh, showMeasure) {
-  if (sh.type === 'circle') {
-    const q = toS(sh.c), rr = sh.r * view.s, ang = -Math.PI / 4;
-    const p = [q[0] + rr * Math.cos(ang), q[1] + rr * Math.sin(ang)];
-    const has = sh.dim != null;
-    if (!has && !showMeasure) return;
-    const col = has ? tok.markup : tok.muted;
-    if (has) {
-      const e = [p[0] + 22 * Math.cos(ang), p[1] + 22 * Math.sin(ang)];
-      c.strokeStyle = col; c.fillStyle = col; c.lineWidth = 1.2; c.beginPath(); c.moveTo(p[0], p[1]); c.lineTo(e[0], e[1]); c.lineTo(e[0] + 12, e[1]); c.stroke();
-      arrow(c, e, p, col);
-      const t = 'Ø' + fmt(sh.dim); c.font = `600 12px ${tok.mono}`; label(c, [e[0] + 16 + c.measureText(t).width / 2, e[1]], t, col);
-    } else label(c, [p[0] + 18, p[1] - 10], 'Ø' + fmt(sh.r * 2), col, 0, true, 11);
-    return;
-  }
-  const n = edgeCount(sh);
-  for (let i = 0; i < n; i++) {
-    const has = sh.dims && sh.dims[i] != null;
-    if (!has && (!showMeasure || sh.smooth)) continue;
-    const [aw, bw] = edgePts(sh, i); const a = toS(aw), b = toS(bw);
-    const L = V.dist(a, b); if (L < 14) continue;
-    const nn = outwardNormal(sh, i); const ux = (b[0] - a[0]) / L, uy = (b[1] - a[1]) / L;
-    let ang = Math.atan2(uy, ux); if (ang > Math.PI / 2) ang -= Math.PI; if (ang <= -Math.PI / 2) ang += Math.PI;
-    const text = fmt(has ? sh.dims[i] : V.dist(aw, bw));
-    if (!has) { label(c, [(a[0] + b[0]) / 2 + nn[0] * 13, (a[1] + b[1]) / 2 + nn[1] * 13], text, tok.muted, ang, true, 11); continue; }
-    const off = 26; const col = tok.markup;
-    const a2 = [a[0] + nn[0] * off, a[1] + nn[1] * off], b2 = [b[0] + nn[0] * off, b[1] + nn[1] * off];
-    c.strokeStyle = col; c.lineWidth = 1; c.beginPath();
-    c.moveTo(a[0] + nn[0] * 5, a[1] + nn[1] * 5); c.lineTo(a[0] + nn[0] * (off + 5), a[1] + nn[1] * (off + 5));
-    c.moveTo(b[0] + nn[0] * 5, b[1] + nn[1] * 5); c.lineTo(b[0] + nn[0] * (off + 5), b[1] + nn[1] * (off + 5));
-    c.moveTo(a2[0], a2[1]); c.lineTo(b2[0], b2[1]); c.stroke();
-    arrow(c, b2, a2, col); arrow(c, a2, b2, col);
-    label(c, [(a2[0] + b2[0]) / 2, (a2[1] + b2[1]) / 2], text, col, ang);
-  }
+  return [n[0], -n[1]];
 }
 function arrow(c, from, to, col) {
   const d = V.norm(V.sub(to, from)), s = 7, w = 3;
   c.fillStyle = col; c.beginPath(); c.moveTo(to[0], to[1]); c.lineTo(to[0] - d[0] * s - d[1] * w, to[1] - d[1] * s + d[0] * w); c.lineTo(to[0] - d[0] * s + d[1] * w, to[1] - d[1] * s - d[0] * w); c.closePath(); c.fill();
+}
+const readable = (ang) => { if (ang > Math.PI / 2) ang -= Math.PI; if (ang <= -Math.PI / 2) ang += Math.PI; return ang; };
+function drawDims(c, sh, P, showMeasure, calibrated) {
+  if (sh.type === 'circle') {
+    const q = toS(sh.c), rr = sh.r * view.s, ang = -Math.PI / 4;
+    const p = [q[0] + rr * Math.cos(ang), q[1] + rr * Math.sin(ang)];
+    if (sh.dim != null) {
+      const e = [p[0] + 22 * Math.cos(ang), p[1] + 22 * Math.sin(ang)]; const col = tok.markup;
+      c.strokeStyle = col; c.lineWidth = 1.2; c.beginPath(); c.moveTo(p[0], p[1]); c.lineTo(e[0], e[1]); c.lineTo(e[0] + 12, e[1]); c.stroke();
+      arrow(c, e, p, col);
+      const t = 'Ø' + fmt(sh.dim); c.font = `600 12px ${tok.mono}`; label(c, [e[0] + 16 + c.measureText(t).width / 2, e[1]], t, col, 0, true, 12, { kind: 'dia', id: sh.id });
+    } else if (showMeasure || calibrated) label(c, [p[0] + 18, p[1] - 10], 'Ø' + fmt(sh.r * 2) + '?', tok.muted, 0, true, 11, { kind: 'dia', id: sh.id });
+  } else {
+    const n = edgeCount(sh);
+    for (let i = 0; i < n && !sh.smooth; i++) {
+      const st = P ? P.edges[i] : (sh.dims[i] != null ? 'dim' : 'free');
+      const has = sh.dims && sh.dims[i] != null;
+      const [aw, bw] = edgePts(sh, i); const a = toS(aw), b = toS(bw);
+      const L = V.dist(a, b); if (L < 14) continue;
+      const nn = outwardNormal(sh, i); const ang = readable(Math.atan2(b[1] - a[1], b[0] - a[0]));
+      const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      if (!has) {
+        if (st === 'derived' && calibrated) label(c, [mid[0] + nn[0] * 13, mid[1] + nn[1] * 13], `(${fmt(V.dist(aw, bw))})`, tok.muted, ang, true, 11, { kind: 'edge', id: sh.id, i });
+        else if (showMeasure) label(c, [mid[0] + nn[0] * 13, mid[1] + nn[1] * 13], fmt(V.dist(aw, bw)), st === 'free' && calibrated ? tok.warn : tok.muted, ang, true, 11, { kind: 'edge', id: sh.id, i });
+        continue;
+      }
+      const off = 26; const col = st === 'over' ? tok.danger : tok.markup;
+      const a2 = [a[0] + nn[0] * off, a[1] + nn[1] * off], b2 = [b[0] + nn[0] * off, b[1] + nn[1] * off];
+      c.strokeStyle = col; c.lineWidth = 1; c.beginPath();
+      c.moveTo(a[0] + nn[0] * 5, a[1] + nn[1] * 5); c.lineTo(a[0] + nn[0] * (off + 5), a[1] + nn[1] * (off + 5));
+      c.moveTo(b[0] + nn[0] * 5, b[1] + nn[1] * 5); c.lineTo(b[0] + nn[0] * (off + 5), b[1] + nn[1] * (off + 5));
+      c.moveTo(a2[0], a2[1]); c.lineTo(b2[0], b2[1]); c.stroke();
+      arrow(c, b2, a2, col); arrow(c, a2, b2, col);
+      label(c, [(a2[0] + b2[0]) / 2, (a2[1] + b2[1]) / 2], fmt(sh.dims[i]), col, ang, true, 12, { kind: 'edge', id: sh.id, i });
+    }
+    for (const k of Object.keys(sh.angs || {}).map(Number)) {
+      if (k >= n) continue; const [aw, bw] = edgePts(sh, k); const a = toS(aw), b = toS(bw); const d = V.norm(V.sub(b, a));
+      label(c, [a[0] + d[0] * 26 - d[1] * 14, a[1] + d[1] * 26 + d[0] * 14], `∠${fmt(sh.angs[k])}°`, tok.markup, 0, true, 11, { kind: 'ang', id: sh.id, i: k });
+    }
+  }
+  (sh.locs || []).forEach((l, j) => {
+    const L = refLine(l.to); if (!L) return;
+    const p = locAnchor(sh, l); const { n } = locNormal(l); const dd = V.dot(V.sub(p, L.a), n);
+    const foot = V.sub(p, V.mul(n, dd)); const P1 = toS(p), F = toS(foot); const col = tok.markup;
+    // extend the reference line if the foot lies beyond it
+    const t = V.dot(V.sub(foot, L.a), L.dir), len = V.dist(L.a, L.b);
+    if (t < 0 || t > len) { const e = toS(t < 0 ? L.a : L.b); c.strokeStyle = col; c.lineWidth = 1; c.setLineDash([3, 3]); c.beginPath(); c.moveTo(e[0], e[1]); c.lineTo(F[0], F[1]); c.stroke(); c.setLineDash([]); }
+    c.strokeStyle = col; c.lineWidth = 1; c.beginPath(); c.moveTo(P1[0], P1[1]); c.lineTo(F[0], F[1]); c.stroke();
+    if (V.dist(P1, F) > 16) { arrow(c, P1, F, col); arrow(c, F, P1, col); }
+    const ang = readable(Math.atan2(F[1] - P1[1], F[0] - P1[0]));
+    label(c, [(P1[0] + F[0]) / 2, (P1[1] + F[1]) / 2], fmt(l.d), col, ang, true, 12, { kind: 'loc', id: sh.id, j });
+  });
 }
 
 /* =========================================================================
    Freehand recognition: strokes -> lines, polylines, polygons, rectangles, circles
    ========================================================================= */
 function snapDir(d) {
-  const ang = Math.atan2(d[1], d[0]); const deg = (ang * 180) / Math.PI;
+  const deg = (Math.atan2(d[1], d[0]) * 180) / Math.PI;
   const k90 = Math.round(deg / 90) * 90; if (Math.abs(deg - k90) < 10) { const r = (k90 * Math.PI) / 180; return [Math.round(Math.cos(r)), Math.round(Math.sin(r))]; }
   const k45 = Math.round(deg / 45) * 45; if (Math.abs(deg - k45) < 6) { const r = (k45 * Math.PI) / 180; return [Math.cos(r), Math.sin(r)]; }
   return V.norm(d);
@@ -731,14 +945,13 @@ function rebuildLoop(start, startIdx, dirs, L) {
   for (let j = 0; j < n - 1; j++) { const k = (startIdx + j) % n; pts[(k + 1) % n] = V.add(pts[k], V.mul(dirs[k], L[k])); }
   return pts;
 }
-function centroid(pts) { let x = 0, y = 0; pts.forEach((p) => { x += p[0]; y += p[1]; }); return [x / pts.length, y / pts.length]; }
 function snapClosed(poly) {
   const n = poly.length; const dirs = [], L = [];
   for (let k = 0; k < n; k++) { const e = V.sub(poly[(k + 1) % n], poly[k]); L.push(V.len(e)); dirs.push(snapDir(e)); }
   const r = closeLoop(dirs, L, new Set());
   if (!r.ok || r.L.some((l) => l <= 1e-3)) return poly;
   const pts = rebuildLoop(poly[0], 0, dirs, r.L);
-  const c0 = centroid(poly), c1 = centroid(pts); const dv = V.sub(c0, c1);
+  const dv = V.sub(centroid(poly), centroid(pts));
   return pts.map((p) => V.add(p, dv));
 }
 function snapOpen(poly) {
@@ -746,6 +959,7 @@ function snapOpen(poly) {
   for (let k = 0; k < poly.length - 1; k++) { const e = V.sub(poly[k + 1], poly[k]); out.push(V.add(out[k], V.mul(snapDir(e), V.len(e)))); }
   return out;
 }
+function isRect(p) { for (let i = 0; i < 4; i++) { const a = turnAngle(p[(i + 3) % 4], p[i], p[(i + 1) % 4]); if (Math.abs(a - Math.PI / 2) > 0.05) return false; } return true; }
 function recognize(raw) {
   const s = view.s; const pts = [];
   for (const p of raw) if (!pts.length || V.dist(pts[pts.length - 1], p) > 1 / s) pts.push(p);
@@ -769,7 +983,7 @@ function recognize(raw) {
     return { kind, shape: { type: 'poly', closed: true, pts: snapped } };
   }
   const rs = resample(pts, 64);
-  let coarse = cleanVerts(rdp(rs, 0.045 * D), false, 0.04 * D);
+  const coarse = cleanVerts(rdp(rs, 0.045 * D), false, 0.04 * D);
   if (coarse.length > 7) {
     const fine = cleanVerts(rdp(resample(pts, 160), 0.006 * D), false, 0.008 * D, 3);
     return { kind: 'Curve', shape: { type: 'poly', closed: false, smooth: true, pts: fine } };
@@ -777,9 +991,6 @@ function recognize(raw) {
   const snapped = snapOpen(coarse);
   return { kind: snapped.length === 2 ? 'Line' : 'Polyline', shape: { type: 'poly', closed: false, pts: snapped } };
 }
-function isRect(p) { for (let i = 0; i < 4; i++) { const a = turnAngle(p[(i + 3) % 4], p[i], p[(i + 1) % 4]); if (Math.abs(a - Math.PI / 2) > 0.05) return false; } return true; }
-
-// Join open strokes at their ends; close loops; snap ends onto existing points.
 function snapRadiusW() { return 22 / view.s; }
 function nearestVertex(p, excludeId, onlyEnds = false) {
   let best = null; const R = snapRadiusW();
@@ -788,48 +999,42 @@ function nearestVertex(p, excludeId, onlyEnds = false) {
     const idxs = onlyEnds ? (sh.closed ? [] : [0, sh.pts.length - 1]) : sh.pts.map((_, i) => i);
     for (const i of idxs) { const d = V.dist(p, sh.pts[i]); if (d < R && (!best || d < best.d)) best = { d, sh, i, p: sh.pts[i] }; }
   }
+  if (!onlyEnds) refs().forEach((r) => r.pts.forEach((q) => { const d = V.dist(p, q); if (d < R && (!best || d < best.d)) best = { d, sh: null, i: -1, p: q }; }));
   return best;
 }
 function addOpenWithJoin(sh) {
-  // snap the new polyline's ends to open ends of others and merge
   let pts = sh.pts.map((p) => p.slice()); let merged = false;
   for (let pass = 0; pass < 2; pass++) {
     const startHit = nearestVertex(pts[0], null, true), endHit = nearestVertex(pts[pts.length - 1], null, true);
     const hit = startHit || endHit; if (!hit) break;
     const other = hit.sh; const op = other.pts;
     if (startHit && endHit && startHit.sh === endHit.sh && startHit.i !== endHit.i) {
-      // closes a loop with that polyline
-      let a = pts; if (startHit.i === 0) a = pts.slice().reverse(); // a ends where op starts
+      let a = pts; if (startHit.i === 0) a = pts.slice().reverse();
       const loop = op.concat(a.slice(1, -1));
       doc.sketch.shapes = shapes().filter((x) => x !== other);
-      const closedPts = other.smooth || sh.smooth ? loop : snapClosed(cleanVerts(loop, true, 1e-6, 2));
-      return pushShape({ type: 'poly', closed: true, smooth: !!(other.smooth || sh.smooth), pts: closedPts, precise: sh.precise && other.precise }, 'Closed outline');
+      const smooth = !!(other.smooth || sh.smooth);
+      return pushShape({ type: 'poly', closed: true, smooth, pts: smooth ? loop : snapClosed(cleanVerts(loop, true, 1e-6, 2)), precise: sh.precise && other.precise }, 'Closed outline');
     }
-    if (startHit) { if (startHit.i === op.length - 1) pts = op.concat(pts.slice(1)); else pts = op.slice().reverse().concat(pts.slice(1)); }
-    else { if (endHit.i === 0) pts = pts.slice(0, -1).concat(op); else pts = pts.slice(0, -1).concat(op.slice().reverse()); }
+    if (startHit) { pts = startHit.i === op.length - 1 ? op.concat(pts.slice(1)) : op.slice().reverse().concat(pts.slice(1)); }
+    else { pts = endHit.i === 0 ? pts.slice(0, -1).concat(op) : pts.slice(0, -1).concat(op.slice().reverse()); }
     doc.sketch.shapes = shapes().filter((x) => x !== other); merged = true;
     sh = { ...sh, smooth: sh.smooth || other.smooth, precise: sh.precise && other.precise };
   }
-  // self-close
   if (pts.length >= 3 && V.dist(pts[0], pts[pts.length - 1]) < snapRadiusW()) {
     const loop = pts.slice(0, -1);
     return pushShape({ ...sh, closed: true, pts: sh.smooth || sh.precise ? loop : snapClosed(cleanVerts(loop, true, 1e-6, 2)) }, 'Closed outline');
   }
-  // snap remaining ends to any vertex (no merge)
   for (const idx of [0, pts.length - 1]) { const v = nearestVertex(pts[idx], null, false); if (v) pts[idx] = v.p.slice(); }
   return pushShape({ ...sh, closed: false, pts }, merged ? 'Joined' : null);
 }
-function pushShape(sh, kind) { sh.id = sh.id || uid(); sh.dims = {}; doc.sketch.shapes.push(sh); return kind; }
-
-function finishFreehand(stroke) {
+function pushShape(sh, kind) { sh.id = sh.id || uid(); sh.dims = {}; sh.angs = {}; sh.locs = []; doc.sketch.shapes.push(sh); return kind; }
+function finishFreehand(stroke, quiet) {
   const res = recognize(stroke.map(toW)); if (!res) { render(); return; }
   let kind = res.kind;
-  if (res.shape.type === 'poly' && !res.shape.closed) { kind = addOpenWithJoin(res.shape) || kind; }
+  if (res.shape.type === 'poly' && !res.shape.closed) kind = addOpenWithJoin(res.shape) || kind;
   else pushShape(res.shape, kind);
-  buzz(); commit(); render(); flash(kind);
+  buzz(); commit(); render(); if (!quiet) flash(kind);
 }
-let flashT = 0;
-function flash(text) { const h = $('#hint-text'); h.innerHTML = `<b>${esc(text)}</b>`; clearTimeout(flashT); flashT = setTimeout(() => { flashT = 0; updateHint(); }, 1400); }
 
 /* =========================================================================
    Dimensions & constraint solving
@@ -842,7 +1047,6 @@ function scaleSketch(f) {
   if (underlay) { const p = sp([underlay.x, underlay.y]); underlay.x = p[0]; underlay.y = p[1]; underlay.w *= f; underlay.h *= f; saveUnderlay(); }
   const vc = sp([view.cx, view.cy]); view.cx = vc[0]; view.cy = vc[1]; view.s /= f;
 }
-// returns message or null
 function setEdgeDim(sh, i, value) {
   if (!(value > 0)) return 'Enter a length above 0.';
   const [a, b] = edgePts(sh, i); const cur = V.dist(a, b);
@@ -850,51 +1054,89 @@ function setEdgeDim(sh, i, value) {
   const prev = sh.dims[i]; sh.dims[i] = value;
   const r = applyDims(sh, i);
   if (r !== true) { if (prev == null) delete sh.dims[i]; else sh.dims[i] = prev; applyDims(sh, i); return r; }
-  return null;
+  applyAllLocs(); return null;
 }
-function applyDims(sh, anchor) {
-  const n = edgeCount(sh); const dirs = [], L = [];
-  for (let k = 0; k < n; k++) { const [a, b] = edgePts(sh, k); const e = V.sub(b, a); L.push(V.len(e)); dirs.push(V.len(e) > 1e-9 ? V.norm(e) : [1, 0]); }
+function applyDims(sh, anchor, dirOverride = {}) {
+  const { n, dirs, L } = polyDirs(sh);
+  Object.entries(dirOverride).forEach(([k, d]) => { dirs[+k] = d; });
   const fixed = new Set(Object.keys(sh.dims).map(Number).filter((k) => k < n));
   fixed.forEach((k) => (L[k] = sh.dims[k]));
-  if (!sh.closed) {
-    const pts = [sh.pts[0].slice()]; for (let k = 0; k < n; k++) pts.push(V.add(pts[k], V.mul(dirs[k], L[k])));
-    sh.pts = pts; return true;
-  }
-  if (fixed.size >= n) {
-    const r = closeLoop(dirs, L, new Set()); return r.ok ? 'All sides are dimensioned. Remove one first.' : 'Those lengths cannot form a closed shape.';
-  }
+  if (!sh.closed) { const pts = [sh.pts[0].slice()]; for (let k = 0; k < n; k++) pts.push(V.add(pts[k], V.mul(dirs[k], L[k]))); sh.pts = pts; return true; }
+  if (fixed.size >= n) { const r = closeLoop(dirs, L, new Set()); return r.ok ? 'All sides are already dimensioned. Remove one first.' : 'Those lengths cannot form a closed shape.'; }
   const r = closeLoop(dirs, L, fixed);
-  if (r.L.some((l, k) => !fixed.has(k) && l < 0.05)) return 'That length doesn’t fit with the other dimensions.';
+  if (r.L.some((l, k) => !fixed.has(k) && l < 0.05)) return 'That doesn’t fit with the other dimensions.';
   sh.pts = rebuildLoop(sh.pts[anchor], anchor, dirs, r.L);
   return true;
+}
+function setEdgeAngle(sh, i, deg) {
+  if (!(deg >= 0 && deg <= 180)) return 'Enter an angle from 0 to 180°.';
+  const [a, b] = edgePts(sh, i); const cur = Math.atan2(b[1] - a[1], b[0] - a[0]); const r = (deg * Math.PI) / 180;
+  const cands = [r, Math.PI - r, Math.PI + r, -r];
+  const best = cands.reduce((m, x) => { const d = Math.abs(Math.atan2(Math.sin(x - cur), Math.cos(x - cur))); return d < m.d ? { x, d } : m; }, { x: r, d: Infinity }).x;
+  sh.angs = sh.angs || {}; const prev = sh.angs[i]; sh.angs[i] = deg;
+  const res = applyDims(sh, i, { [i]: [Math.cos(best), Math.sin(best)] });
+  if (res !== true) { if (prev == null) delete sh.angs[i]; else sh.angs[i] = prev; return res; }
+  applyAllLocs(); return null;
 }
 function setCircleDim(sh, value) {
   if (!(value > 0)) return 'Enter a diameter above 0.';
   if (!sketchCalibrated()) { scaleSketch(value / (sh.r * 2)); sh.dim = value; sh.r = value / 2; return 'Sketch scaled to real size'; }
   sh.dim = value; sh.r = value / 2; return null;
 }
+function suggestLoc(sh) {
+  const lines = candidateLines(sh).map((to) => ({ to, L: refLine(to) })).filter((x) => x.L);
+  if (!lines.length) return null;
+  const have = validLocs(sh).map((l) => refLine(l.to).dir);
+  const pool = lines.filter((x) => have.every((d) => Math.abs(V.cross(d, x.L.dir)) > 0.2));
+  if (!pool.length) return null;
+  const anchorFor = (L) => {
+    if (sh.type === 'circle') return { j: -1, p: sh.c };
+    let best = null; sh.pts.forEach((p, j) => { const d = distToSeg(p, L.a, L.b); if (!best || d < best.d) best = { j, p, d }; }); return best;
+  };
+  const scored = pool.map((x) => { const an = anchorFor(x.L); const vertical = Math.abs(x.L.dir[1]) > 0.9 ? 0 : 1; return { ...x, an, score: (have.length ? 0 : vertical * 1e9) + distToSeg(an.p, x.L.a, x.L.b) }; });
+  scored.sort((a, b) => a.score - b.score);
+  const pick = scored[0]; const nl = [-pick.L.dir[1], pick.L.dir[0]];
+  const side = Math.sign(V.dot(V.sub(pick.an.p, pick.L.a), nl)) || 1;
+  const loc = { j: pick.an.j, to: pick.to, side, d: 0 }; loc.d = Math.abs(locDistance(sh, loc));
+  return loc;
+}
+function makeLoc(sh, to, anchorPt) {
+  const L = refLine(to); if (!L) return null;
+  let j = -1; if (sh.type === 'poly') { let best = Infinity; sh.pts.forEach((p, k) => { const d = V.dist(p, anchorPt || p); if (d < best) { best = d; j = k; } }); }
+  const loc = { j, to, side: 1, d: 0 }; const p = locAnchor(sh, loc); const nl = [-L.dir[1], L.dir[0]];
+  loc.side = Math.sign(V.dot(V.sub(p, L.a), nl)) || 1; loc.d = Math.abs(locDistance(sh, loc)); return loc;
+}
+function addLoc(sh, loc) {
+  const d = refLine(loc.to).dir;
+  sh.locs = validLocs(sh).filter((l) => Math.abs(V.cross(refLine(l.to).dir, d)) > 0.05); // replace a parallel one
+  sh.locs.push(loc); if (sh.locs.length > 2) sh.locs.shift(); applyLocs(sh);
+}
 
 /* =========================================================================
    Sketch input
    ========================================================================= */
-const ptrs = new Map(); let action = null; let pinch = null; let penSeen = false; let eraseTrail = [];
+const ptrs = new Map(); let action = null; let pinch = null; let penSeen = false; let eraseTrail = []; let multi = null;
 const localPt = (e) => { const r = sk.cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
 sk.cv.addEventListener('pointerdown', (e) => {
   e.preventDefault(); sk.cv.setPointerCapture(e.pointerId); closeMenu();
   if (e.pointerType === 'pen') penSeen = true;
   const p = localPt(e); ptrs.set(e.pointerId, p);
+  if (ptrs.size >= 2) {
+    if (!multi) multi = { t0: performance.now(), max: ptrs.size, moved: false, start: new Map([...ptrs].map(([k, v]) => [k, v.slice()])), view: { ...view } };
+    else { multi.max = Math.max(multi.max, ptrs.size); multi.start.set(e.pointerId, p.slice()); }
+  }
   if (ptrs.size === 2) { if (action && action.cancel) action.cancel(); action = null; startPinch(); return; }
-  if (ptrs.size > 2) return;
+  if (ptrs.size > 2) { pinch = null; return; }
   const panOnly = e.button === 1 || e.button === 2 || (penSeen && e.pointerType === 'touch');
   if (panOnly) { action = panAction(p); return; }
   action = Tools[tool].down(p, e) || null;
 });
 sk.cv.addEventListener('pointermove', (e) => {
-  if (!ptrs.has(e.pointerId)) { if (e.pointerType === 'mouse' && Tools[tool].hover) Tools[tool].hover(localPt(e)); return; }
+  if (!ptrs.has(e.pointerId)) return;
   const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
   for (const ev of evs.length ? evs : [e]) {
     const p = localPt(ev); ptrs.set(e.pointerId, p);
+    if (multi && multi.start.has(e.pointerId) && V.dist(multi.start.get(e.pointerId), p) > 12) multi.moved = true;
     if (pinch) { updatePinch(); continue; }
     if (action) action.move(p, ev);
   }
@@ -902,7 +1144,14 @@ sk.cv.addEventListener('pointermove', (e) => {
 const endPtr = (e, cancel) => {
   if (!ptrs.has(e.pointerId)) return;
   const p = localPt(e); ptrs.delete(e.pointerId);
-  if (pinch) { if (ptrs.size < 2) { pinch = null; persist(); } return; }
+  if (multi) {
+    if (ptrs.size === 0) {
+      const m = multi; multi = null; pinch = null;
+      if (!m.moved && performance.now() - m.t0 < 400) { view = m.view; if (m.max >= 3) { redo(); flash('Redo'); } else { undo(); flash('Undo'); } render(); }
+      else persist();
+    }
+    return;
+  }
   if (action) { cancel ? action.cancel && action.cancel() : action.up(p, e); action = null; }
 };
 sk.cv.addEventListener('pointerup', (e) => endPtr(e, false));
@@ -913,10 +1162,7 @@ sk.cv.addEventListener('wheel', (e) => {
   view.s = clamp(view.s * Math.exp(-e.deltaY * 0.0015), 0.05, 400);
   view.cx = w[0] - (p[0] - sk.W / 2) / view.s; view.cy = w[1] + (p[1] - sk.H / 2) / view.s; render(); persist();
 }, { passive: false });
-function startPinch() {
-  const [a, b] = [...ptrs.values()]; const m = V.lerp(a, b, 0.5);
-  pinch = { d0: V.dist(a, b) || 1, s0: view.s, w0: toW(m) };
-}
+function startPinch() { const [a, b] = [...ptrs.values()]; const m = V.lerp(a, b, 0.5); pinch = { d0: V.dist(a, b) || 1, s0: view.s, w0: toW(m) }; }
 function updatePinch() {
   const [a, b] = [...ptrs.values()]; if (!a || !b) return; const m = V.lerp(a, b, 0.5);
   view.s = clamp(pinch.s0 * (V.dist(a, b) / pinch.d0), 0.05, 400);
@@ -935,25 +1181,119 @@ function hitTest(q, kinds = ['vertex', 'circle', 'edge', 'inside']) {
   let best = null; const consider = (h) => { if (!best || h.d < best.d) best = h; };
   for (const sh of shapes()) {
     if (sh.type === 'circle') {
-      if (kinds.includes('circle')) { const d = Math.abs(V.dist(w, sh.c) - sh.r); if (d < R) consider({ kind: 'shape', id: sh.id, d }); const dc = V.dist(w, sh.c); if (dc < R) consider({ kind: 'shape', id: sh.id, d: dc - 1e-6 }); }
+      if (kinds.includes('circle')) { const d = Math.abs(V.dist(w, sh.c) - sh.r); if (d < R) consider({ kind: 'shape', id: sh.id, d }); const dc = V.dist(w, sh.c); if (dc < R) consider({ kind: 'shape', id: sh.id, d: dc - 1e-6, center: true }); }
       continue;
     }
     if (kinds.includes('vertex') && !sh.smooth) sh.pts.forEach((p, i) => { const d = V.dist(w, p); if (d < R) consider({ kind: 'vertex', id: sh.id, i, d: d * 0.6 }); });
     if (kinds.includes('edge')) for (let i = 0; i < edgeCount(sh); i++) { const [a, b] = edgePts(sh, i); const d = distToSeg(w, a, b); if (d < R * 0.8) consider({ kind: sh.smooth ? 'shape' : 'edge', id: sh.id, i, d }); }
   }
+  if (kinds.includes('ref')) allRefLines().forEach((to) => { const L = refLine(to); const d = distToSeg(w, L.a, L.b); if (d < R) consider({ kind: 'ref', to, d: d + R * 0.1 }); });
   if (!best && kinds.includes('inside')) {
     const inside = shapes().filter((s) => isClosedShape(s) && pointInPoly(w, shapeOutline(s))).sort((a, b) => shapeArea(a) - shapeArea(b));
     if (inside[0]) best = { kind: 'shape', id: inside[0].id, d: R };
   }
   return best;
 }
+const dimHitAt = (q) => dimHits.filter((h) => q[0] >= h.x0 && q[0] <= h.x1 && q[1] >= h.y0 && q[1] <= h.y1).sort((a, b) => Math.hypot((a.x0 + a.x1) / 2 - q[0], (a.y0 + a.y1) / 2 - q[1]) - Math.hypot((b.x0 + b.x1) / 2 - q[0], (b.y0 + b.y1) / 2 - q[1]))[0] || null;
 const isTap = (p0, p, t0) => V.dist(p0, p) < 8 && performance.now() - t0 < 450;
+
+// Gesture: scribble (back-and-forth) over something deletes it.
+function isScratch(stroke) {
+  const b = bbox(stroke); const diag = Math.hypot(b.w, b.h); const L = pathLen(stroke);
+  if (diag < 22 || L < 3.6 * diag) return false;
+  const rev = (axis, ext) => {
+    if (ext < 10) return 0; let dir = 0, anchor = stroke[0][axis], count = 0;
+    for (const p of stroke) { const d = p[axis] - anchor; if (dir >= 0 && d < -0.3 * ext) { if (dir > 0) count++; dir = -1; anchor = p[axis]; } else if (dir <= 0 && d > 0.3 * ext) { if (dir < 0) count++; dir = 1; anchor = p[axis]; } else if ((dir > 0 && d > 0) || (dir < 0 && d < 0)) anchor = p[axis]; }
+    return count;
+  };
+  return Math.max(rev(0, b.w), rev(1, b.h)) >= 3;
+}
+function scratchDelete(stroke) {
+  const b = bbox(stroke); const r = { x0: b.x0 - 4, y0: b.y0 - 4, x1: b.x1 + 4, y1: b.y1 + 4 };
+  const dimsHit = dimHits.filter((h) => !(h.x1 < r.x0 || h.x0 > r.x1 || h.y1 < r.y0 || h.y0 > r.y1));
+  const real = dimsHit.filter((h) => (h.kind === 'edge' ? byId(h.id)?.dims[h.i] != null : h.kind === 'dia' ? byId(h.id)?.dim != null : true));
+  if (real.length) {
+    real.forEach(removeDimHit); commit(); render(); buzz(15);
+    toast(real.length === 1 ? 'Dimension removed' : `${real.length} dimensions removed`, [{ label: 'Undo', fn: undo }]); return;
+  }
+  const kill = shapes().filter((sh) => {
+    if (sh.type === 'circle') { const q = toS(sh.c); if (q[0] > r.x0 && q[0] < r.x1 && q[1] > r.y0 && q[1] < r.y1) return true; return shapeOutline(sh).some((p) => { const s = toS(p); return s[0] > r.x0 && s[0] < r.x1 && s[1] > r.y0 && s[1] < r.y1; }); }
+    for (let i = 0; i < edgeCount(sh); i++) { const [a, bb] = edgePts(sh, i); if (segRect(toS(a), toS(bb), r)) return true; }
+    return false;
+  });
+  if (!kill.length) { toast('Scribble over a shape or a dimension to delete it.'); render(); return; }
+  doc.sketch.shapes = shapes().filter((s) => !kill.includes(s)); sel = null; applyAllLocs(); commit(); render(); buzz(15);
+  toast(kill.length === 1 ? 'Deleted' : `Deleted ${kill.length} shapes`, [{ label: 'Undo', fn: undo }]);
+}
+function removeDimHit(h) {
+  const sh = byId(h.id); if (!sh) return;
+  if (h.kind === 'edge') delete sh.dims[h.i];
+  if (h.kind === 'dia') sh.dim = null;
+  if (h.kind === 'ang') delete sh.angs[h.i];
+  if (h.kind === 'loc') sh.locs.splice(h.j, 1);
+}
+function editDimHit(h, opts = {}) {
+  const sh = byId(h.id); if (!sh) return;
+  if (h.kind === 'edge') editEdge(sh, h.i, opts);
+  if (h.kind === 'dia') editCircle(sh, opts);
+  if (h.kind === 'ang') editAngle(sh, h.i, opts);
+  if (h.kind === 'loc') editLoc(sh, sh.locs[h.j], opts);
+}
+// Tap in Draw/Dimension: edit the dimension or entity under the finger.
+function tapEdit(q) {
+  const h = dimHitAt(q); if (h) { editDimHit(h); return true; }
+  const t = hitTest(q, ['circle', 'edge']);
+  if (t && t.kind === 'edge') { editEdge(byId(t.id), t.i); return true; }
+  if (t && t.kind === 'shape' && byId(t.id).type === 'circle') { editCircle(byId(t.id)); return true; }
+  return false;
+}
+
+// Is this little stroke a handwritten number rather than geometry?
+function nearestTarget(sp) {
+  const cw = toW(sp); let best = null;
+  for (const sh of shapes()) {
+    if (sh.type === 'circle') { const d = Math.max(0, V.dist(cw, sh.c) - sh.r) * view.s; if (!best || d < best.d) best = { d, sh }; continue; }
+    if (sh.smooth) continue;
+    for (let i = 0; i < edgeCount(sh); i++) { const [a, b] = edgePts(sh, i); const d = distToSeg(cw, a, b) * view.s; if (!best || d < best.d) best = { d, sh, i }; }
+  }
+  return best;
+}
+function looksLikeNumber(stroke) {
+  if (!shapes().some((s) => s.type === 'circle' || (s.type === 'poly' && !s.smooth))) return false;
+  const b = bbox(stroke); const size = Math.max(b.w, b.h); const center = [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2];
+  if (live.handwriting.length) {
+    const hb = bbox(live.handwriting.flat()); const hh = Math.max(hb.h, 16);
+    const near = b.x0 < hb.x1 + hh * 1.4 && b.x1 > hb.x0 - hh * 1.4 && b.y1 > hb.y0 - hh * 0.8 && b.y0 < hb.y1 + hh * 0.8;
+    if (near && size < 90) return true;
+  }
+  if (size > 66 || size < 8) return false;
+  if (nearestVertex(toW(stroke[0]), null, false) || nearestVertex(toW(stroke[stroke.length - 1]), null, false)) return false;
+  for (const sh of shapes()) { if (sh.type !== 'poly') continue; for (let i = 0; i < edgeCount(sh); i++) { const [a, c] = edgePts(sh, i).map(toS); for (let k = 1; k < stroke.length; k++) if (segsCross(stroke[k - 1], stroke[k], a, c)) return false; } }
+  const t = nearestTarget(center); if (!t || t.d > 110) return false;
+  const cw = toW(center);
+  const inside = shapes().filter((s) => isClosedShape(s) && pointInPoly(cw, shapeOutline(s)));
+  if (inside.length && !(t.sh.type === 'circle' && t.d < 70 && !inside.includes(t.sh))) return false;
+  return true;
+}
 
 const Tools = {
   draw: {
     down(p) {
-      const stroke = [p]; live.ink = stroke; render();
-      return { move(q) { stroke.push(q); render(); }, up(q) { stroke.push(q); live.ink = null; finishFreehand(stroke); }, cancel() { live.ink = null; render(); } };
+      const t0 = performance.now(); const stroke = [p]; live.ink = stroke; clearTimeout(inkTimer); render();
+      return {
+        move(q) { stroke.push(q); render(); },
+        up(q) {
+          stroke.push(q); live.ink = null;
+          if (isTap(p, q, t0)) {
+            if (live.handwriting.length && nearInk(q)) { live.handwriting.push([q]); scheduleInk(); render(); return; }
+            flushInk(); if (!tapEdit(q)) render(); return;
+          }
+          if (isScratch(stroke)) { live.handwriting = []; clearTimeout(inkTimer); scratchDelete(stroke); return; }
+          if (looksLikeNumber(stroke)) { live.handwriting.push(stroke); live.inkSource = 'auto'; scheduleInk(); render(); return; }
+          flushInk(); finishFreehand(stroke);
+        },
+        cancel() { live.ink = null; render(); },
+      };
     },
   },
   line: {
@@ -961,14 +1301,13 @@ const Tools = {
       const a = snapPoint(p);
       const upd = (q) => {
         let b = snapPoint(q);
-        if (!b.snapped) { // polar snap: 15° angles, grid lengths
+        if (!b.snapped) {
           const w = toW(q), d = V.sub(w, a.p); const L = V.len(d); const ang = Math.atan2(d[1], d[0]);
           const k = Math.round(ang / (Math.PI / 12)) * (Math.PI / 12); const st = gridSteps()[0];
           const useAng = Math.abs(ang - k) < 0.07 ? k : ang; const LL = Math.round(L / st) * st;
           b = { p: V.add(a.p, [Math.cos(useAng) * LL, Math.sin(useAng) * LL]), snapped: false };
         }
-        const L = V.dist(a.p, b.p);
-        live.preview = { type: 'line', a: a.p, b: b.p, label: `${fmt(L)} mm`, labelAt: V.add(V.lerp(a.p, b.p, 0.5), [0, 14 / view.s]), snap: b.snapped ? b.p : a.snapped ? a.p : null };
+        live.preview = { type: 'line', a: a.p, b: b.p, label: `${fmt(V.dist(a.p, b.p))} mm`, labelAt: V.add(V.lerp(a.p, b.p, 0.5), [0, 14 / view.s]), snap: b.snapped ? b.p : a.snapped ? a.p : null };
         render(); return b;
       };
       let b = upd(p);
@@ -1001,25 +1340,34 @@ const Tools = {
   },
   dim: {
     down(p) {
-      const t0 = performance.now(); const stroke = [p]; live.ink = stroke; clearTimeout(inkTimer); render();
+      const t0 = performance.now();
+      // drag from a hole (or a vertex of a shape that needs placing) to an edge = position distance
+      const h0 = hitTest(p, ['circle', 'vertex']);
+      const src = h0 && byId(h0.id); const linkable = src && needsPosition(src) && (h0.kind === 'vertex' || h0.center || src.type === 'circle');
+      if (linkable) {
+        const from = h0.kind === 'vertex' ? src.pts[h0.i] : src.c;
+        return {
+          move(q) { live.preview = { type: 'line', a: from, b: toW(q) }; const t = hitTest(q, ['edge', 'ref']); focus = t && (t.kind === 'edge' || t.kind === 'ref') ? { line: t.kind === 'ref' ? t.to : { id: t.id, i: t.i } } : null; render(); },
+          up(q) {
+            live.preview = null; focus = null;
+            if (isTap(p, q, t0)) { render(); if (!tapEdit(q)) toast('Drag from the hole to an edge to set its distance.'); return; }
+            const t = hitTest(q, ['edge', 'ref']); render();
+            if (!t || (t.kind !== 'edge' && t.kind !== 'ref') || t.id === src.id) { toast('Drag from the hole and let go on an edge.'); return; }
+            const loc = makeLoc(src, t.kind === 'ref' ? t.to : { id: t.id, i: t.i }, from); if (loc) editLoc(src, loc, { isNew: true });
+          },
+          cancel() { live.preview = null; focus = null; render(); },
+        };
+      }
+      const stroke = [p]; live.ink = stroke; clearTimeout(inkTimer); render();
       return {
         move(q) { stroke.push(q); render(); },
         up(q) {
           stroke.push(q); live.ink = null;
           const tap = isTap(p, q, t0);
-          if (tap && live.handwriting.length) {
-            const b = bbox(live.handwriting.flat()); const near = q[0] > b.x0 - b.h && q[0] < b.x1 + b.h && q[1] > b.y0 - b.h * 0.5 && q[1] < b.y1 + b.h;
-            if (near) { live.handwriting.push([q]); scheduleInk(); render(); return; }
-          }
-          if (tap) {
-            const h = hitTest(q, ['circle', 'edge']); render();
-            if (h && h.kind === 'edge') openEdgeDim(byId(h.id), h.i);
-            else if (h && h.kind === 'shape' && byId(h.id).type === 'circle') openCircleDim(byId(h.id));
-            else if (h && h.kind === 'shape') toast('Curves can’t take a length. Tap a straight edge.');
-            else toast('Tap a line to type its length, or write the number beside it.');
-            return;
-          }
-          live.handwriting.push(stroke); scheduleInk(); render();
+          if (tap && live.handwriting.length && nearInk(q)) { live.handwriting.push([q]); scheduleInk(); render(); return; }
+          if (tap) { render(); if (!tapEdit(q)) toast('Tap a line to type its length, or write the number beside it.'); return; }
+          if (isScratch(stroke)) { live.handwriting = []; scratchDelete(stroke); return; }
+          live.handwriting.push(stroke); live.inkSource = 'dim'; scheduleInk(); render();
         },
         cancel() { live.ink = null; render(); },
       };
@@ -1027,18 +1375,19 @@ const Tools = {
   },
   select: {
     down(p) {
-      const t0 = performance.now(); const h = hitTest(p); let moved = false;
+      const dh = dimHitAt(p); if (dh) return { move() {}, up(q) { if (V.dist(p, q) < 8) editDimHit(dh); }, cancel() {} };
+      const h = hitTest(p); let moved = false;
       if (!h) {
         const pan = panAction(p);
-        return { move(q) { if (V.dist(p, q) > 6) moved = true; pan.move(q); }, up(q) { if (!moved) { sel = null; closeSheet(); render(); } else persist(); }, cancel() {} };
+        return { move(q) { if (V.dist(p, q) > 6) moved = true; pan.move(q); }, up() { if (!moved) { sel = null; closeSheet(); render(); } else persist(); }, cancel() {} };
       }
       const sh = byId(h.id); const w0 = toW(p); const snap0 = JSON.stringify(sh);
       return {
         move(q) {
           if (!moved && V.dist(p, q) < 7) return; moved = true; sel = h;
           if (h.kind === 'vertex') {
-            const sp = snapPoint(q, sh.id); sh.pts[h.i] = sp.p;
-            const n = edgeCount(sh); [h.i, (h.i - 1 + sh.pts.length) % sh.pts.length].forEach((k) => { if (k < n) delete sh.dims[k]; });
+            sh.pts[h.i] = snapPoint(q, sh.id).p;
+            const n = edgeCount(sh); [h.i, (h.i - 1 + sh.pts.length) % sh.pts.length].forEach((k) => { if (k < n) { delete sh.dims[k]; delete sh.angs[k]; } });
           } else {
             const orig = JSON.parse(snap0); const st = gridSteps()[0];
             let d = V.sub(toW(q), w0); d = [Math.round(d[0] / st) * st, Math.round(d[1] / st) * st];
@@ -1046,9 +1395,12 @@ const Tools = {
           }
           render();
         },
-        up(q) {
-          if (moved) { commit(); if (sheetFor && sheetFor.id === sh.id) openSelSheet(sel); render(); return; }
-          sel = h.kind === 'edge' || h.kind === 'vertex' || h.kind === 'shape' ? h : null; openSelSheet(sel); render();
+        up() {
+          if (moved) {
+            if (h.kind !== 'vertex' && (sh.locs || []).length) { sh.locs = []; toast('Position distances removed because you moved it'); }
+            applyAllLocs(); commit(); render(); return;
+          }
+          sel = h; openSelSheet(sel); render();
         },
         cancel() { Object.assign(sh, JSON.parse(snap0)); render(); },
       };
@@ -1059,35 +1411,33 @@ const Tools = {
       eraseTrail = [p]; let removed = 0;
       const hit = (q) => { const h = hitTest(q, ['circle', 'edge', 'vertex', 'inside']); if (h) { doc.sketch.shapes = shapes().filter((s) => s.id !== h.id); removed++; buzz(5); } };
       hit(p); render();
-      return { move(q) { eraseTrail.push(q); hit(q); render(); }, up() { eraseTrail = []; if (removed) { sel = null; closeSheet(); commit(); } render(); }, cancel() { eraseTrail = []; render(); } };
+      return { move(q) { eraseTrail.push(q); hit(q); render(); }, up() { eraseTrail = []; if (removed) { sel = null; closeSheet(); applyAllLocs(); commit(); } render(); }, cancel() { eraseTrail = []; render(); } };
     },
   },
 };
 
-// Handwriting: group strokes, read the number after a short pause, attach to the nearest edge or circle.
-let inkTimer = 0; let lastInk = null;
+// Handwriting on the canvas: group strokes, read after a pause, attach to the nearest edge or circle.
+let inkTimer = 0;
+function nearInk(q) { const b = bbox(live.handwriting.flat()); const h = Math.max(b.h, 16); return q[0] > b.x0 - h && q[0] < b.x1 + h && q[1] > b.y0 - h * 0.5 && q[1] < b.y1 + h; }
 function scheduleInk() { clearTimeout(inkTimer); inkTimer = setTimeout(processInk, 850); }
+function flushInk() { if (live.handwriting.length) { clearTimeout(inkTimer); processInk(); } }
 function processInk() {
   const strokes = live.handwriting; live.handwriting = []; render();
   if (!strokes.length) return;
-  const all = strokes.flat(); const b = bbox(all); const center = [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2];
-  const r = Digits.read(strokes);
-  // nearest target
-  let best = null; const cw = toW(center);
-  for (const sh of shapes()) {
-    if (sh.type === 'circle') { const d = Math.abs(V.dist(cw, sh.c) - sh.r) * view.s; const dc = V.dist(cw, sh.c) * view.s; const dd = Math.min(d, dc); if (!best || dd < best.d) best = { d: dd, sh }; continue; }
-    if (sh.smooth) continue;
-    for (let i = 0; i < edgeCount(sh); i++) { const [a, bb] = edgePts(sh, i); const d = distToSeg(cw, a, bb) * view.s; if (!best || d < best.d) best = { d, sh, i }; }
-  }
-  if (!best || best.d > 160) { toast('Write the number closer to a line.'); return; }
-  if (!r.text || !(r.value > 0)) { best.sh.type === 'circle' ? openCircleDim(best.sh, r) : openEdgeDim(best.sh, best.i, r); return; }
-  lastInk = r;
-  const msg = best.sh.type === 'circle' ? setCircleDim(best.sh, r.value) : setEdgeDim(best.sh, best.i, r.value);
-  const failed = msg && !/scaled/.test(msg);
-  if (failed) { toast(msg); return; }
+  const auto = live.inkSource === 'auto';
+  const asGeometry = () => { strokes.filter((s) => s.length > 1).forEach((s) => finishFreehand(s, true)); };
+  const b = bbox(strokes.flat()); const center = [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2];
+  const r = Digits.read(strokes); const t = nearestTarget(center);
+  if (!t || t.d > 160) { if (auto) asGeometry(); else toast('Write the number closer to a line.'); return; }
+  if (auto && (!(r.value > 0) || r.worst > 2.8)) { asGeometry(); return; }
+  if (!r.text || !(r.value > 0)) { t.sh.type === 'circle' ? editCircle(t.sh, { ink: r }) : editEdge(t.sh, t.i, { ink: r }); return; }
+  const msg = t.sh.type === 'circle' ? setCircleDim(t.sh, r.value) : setEdgeDim(t.sh, t.i, r.value);
+  if (msg && !/scaled/.test(msg)) { toast(msg); return; }
   commit(); render(); buzz(12);
-  const target = best.sh;  const ei = best.i;
-  toast(`${msg ? msg + ' · ' : ''}Read “${r.text}” mm`, { label: 'Fix', fn: () => (target.type === 'circle' ? openCircleDim(byId(target.id), r) : openEdgeDim(byId(target.id), ei, r)) });
+  const id = t.sh.id, ei = t.i, isC = t.sh.type === 'circle';
+  const acts = [{ label: 'Fix', fn: () => (isC ? editCircle(byId(id), { ink: r }) : editEdge(byId(id), ei, { ink: r })) }];
+  if (auto) acts.push({ label: 'Not a number', fn: () => { undo(); asGeometry(); } });
+  toast(`${msg ? msg + ' · ' : ''}${isC ? 'Ø' : ''}${r.text} mm`, acts, 6000);
 }
 
 /* =========================================================================
@@ -1095,152 +1445,337 @@ function processInk() {
    ========================================================================= */
 const sheet = $('#sheet'); let sheetFor = null;
 function openSheet(html, ctx) {
+  previewStop();
   sheet.innerHTML = `<div class="grab"></div>${html}`; sheet.classList.add('open'); sheetFor = ctx || null;
-  $('#btn-make3d').hidden = true; $('#hint').hidden = true; requestAnimationFrame(updateViewOffset);
+  $('#btn-review').hidden = true; $('#hint-text').hidden = true; requestAnimationFrame(() => { updateViewOffset(); placeToast(); });
   const first = sheet.querySelector('[data-autofocus]');
   if (first && matchMedia('(pointer: fine)').matches) setTimeout(() => { first.focus(); first.select && first.select(); }, 60);
 }
-function closeSheet() { sheet.classList.remove('open'); sheetFor = null; $('#hint').hidden = false; updateFab(); updateViewOffset(); }
-function field(id, labelText, value, unit = 'mm', extra = '') {
-  return `<div class="field ${extra}"><label for="${id}">${labelText}</label><div class="box"><input id="${id}" inputmode="decimal" enterkeyhint="done" autocomplete="off" value="${esc(value)}"${extra.includes('big') ? ' data-autofocus' : ''}><span class="unit">${unit}</span></div></div>`;
+function closeSheet() { previewStop(); sheet.classList.remove('open'); sheetFor = null; if (focus) { focus = null; render(); } updateFab(); updateViewOffset(); placeToast(); }
+const closeBtn = `<button class="iconbtn" data-close aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button>`;
+function field(id, labelText, value, unit = 'mm', extra = '', placeholder = '') {
+  return `<div class="field ${extra}"><label for="${id}">${labelText}</label><div class="box"><input id="${id}" inputmode="decimal" enterkeyhint="done" autocomplete="off" value="${esc(value)}" placeholder="${esc(placeholder)}"${extra.includes('big') ? ' data-autofocus' : ''}><span class="unit">${unit}</span></div></div>`;
 }
 const onEnter = (el, fn) => el && el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); fn(); } });
+sheet.addEventListener('click', (e) => { if (e.target.closest('[data-close]')) { guide.active = false; closeSheet(); sel = null; sel3 = null; clearFace(); refresh3DSelection(); render(); } });
 
-function openEdgeDim(sh, i, ink) {
-  if (!sh) return; sel = { kind: 'edge', id: sh.id, i }; render();
-  const [a, b] = edgePts(sh, i); const cur = sh.dims[i] != null ? sh.dims[i] : V.dist(a, b);
-  const pre = ink && ink.text ? ink.text : fmt(cur);
-  const first = !sketchCalibrated();
+// Keep the target of a number sheet visible above the sheet.
+function ensureVisible(pt) {
+  if (!pt) return;
+  requestAnimationFrame(() => {
+    const top = 70, bottom = sk.H - (sheet.classList.contains('open') ? sheet.offsetHeight : 0) - 30;
+    const q = toS(pt);
+    if (q[1] < top || q[1] > bottom || q[0] < 30 || q[0] > sk.W - 30) {
+      const ty = bottom > top + 40 ? (top + bottom) / 2 : top + 40;
+      view.cx = pt[0]; view.cy = pt[1] + (ty - sk.H / 2) / view.s; render();
+    }
+  });
+}
+function focusPoint(f) {
+  if (!f) return null;
+  if (f.edge) { const sh = byId(f.edge.id); return sh ? V.lerp(...edgePts(sh, f.edge.i), 0.5) : null; }
+  if (f.circle) { const sh = byId(f.circle); return sh ? sh.c : null; }
+  if (f.point) return f.point;
+  if (f.line) { const L = refLine(f.line); return L ? V.lerp(L.a, L.b, 0.5) : null; }
+  return null;
+}
+
+// Handwriting pad inside a sheet
+function mountPad(wrap, onRead) {
+  const cv = document.createElement('canvas'); cv.className = 'pad'; cv.setAttribute('aria-label', 'Write the number here');
+  const clr = document.createElement('button'); clr.className = 'iconbtn'; clr.setAttribute('aria-label', 'Clear writing'); clr.innerHTML = '<svg class="i"><use href="#i-x"/></svg>';
+  wrap.append(cv, clr);
+  const ctx = cv.getContext('2d'); let strokes = [], cur = null, t = 0; const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const size = () => { const r = cv.getBoundingClientRect(); cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr); draw(); };
+  const draw = () => {
+    const r = cv.getBoundingClientRect(); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, r.width, r.height);
+    if (!strokes.length) { ctx.fillStyle = tok.muted; ctx.font = `500 14px ${tok.mono}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('✍  write the number here', r.width / 2, r.height / 2); return; }
+    ctx.strokeStyle = tok.markup; ctx.fillStyle = tok.markup; ctx.lineWidth = 3.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (const s of strokes) { if (s.length === 1) { ctx.beginPath(); ctx.arc(s[0][0], s[0][1], 2.5, 0, Math.PI * 2); ctx.fill(); continue; } ctx.beginPath(); s.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.stroke(); }
+  };
+  const pt = (e) => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  cv.addEventListener('pointerdown', (e) => { e.preventDefault(); cv.setPointerCapture(e.pointerId); clearTimeout(t); cur = [pt(e)]; strokes.push(cur); draw(); });
+  cv.addEventListener('pointermove', (e) => { if (!cur) return; const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e]; for (const ev of evs.length ? evs : [e]) cur.push(pt(ev)); draw(); });
+  const end = () => { if (!cur) return; cur = null; t = setTimeout(() => { if (strokes.length) onRead(Digits.read(strokes)); }, 650); };
+  cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+  clr.onclick = () => { strokes = []; clearTimeout(t); draw(); onRead(null); };
+  requestAnimationFrame(size);
+  return { clear() { strokes = []; draw(); } };
+}
+
+// Generic number entry: handwriting pad + keyboard field
+const guide = { active: false };
+function openNumberSheet(o) {
+  focus = o.focus || null; render();
+  const stepNote = guide.active ? `<p class="note warn">Guided: ${esc(o.guideText || 'fill in the highlighted size')}.</p>` : '';
   openSheet(`
-    <div class="head"><div><h2>Edge length</h2><div class="sub">Measured ${fmt(V.dist(a, b))} mm${sh.dims[i] != null ? ' · dimensioned' : ''}</div></div>
-      <button class="iconbtn" data-close aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button></div>
-    ${first ? '<p class="note">This is your first dimension, so the whole sketch scales to match it.</p>' : ''}
-    <div class="fields">${field('dim-val', 'Length', pre, 'mm', 'big')}</div>
+    <div class="head"><div><h2>${esc(o.title)}</h2><div class="sub">${esc(o.sub || '')}</div></div>${closeBtn}</div>
+    ${stepNote}${o.note ? `<p class="note">${esc(o.note)}</p>` : ''}
+    <div class="padwrap" id="padwrap"></div>
+    <div class="fields">${field('num-val', o.label || 'Value', o.value ?? '', o.unit || 'mm', 'big', o.placeholder ?? '')}</div>
     <div class="row">
-      <button class="btn primary grow" id="dim-apply"><svg class="i"><use href="#i-check"/></svg>Apply</button>
-      ${sh.dims[i] != null ? '<button class="btn" id="dim-remove">Remove</button>' : ''}
-    </div>`, { kind: 'edge', id: sh.id });
+      <button class="btn primary grow" id="num-apply"><svg class="i"><use href="#i-check"/></svg>Apply</button>
+      ${o.remove ? '<button class="btn danger" id="num-remove">Remove</button>' : ''}
+      ${guide.active ? '<button class="btn" id="num-skip">Stop</button>' : ''}
+    </div>`, o.ctx || { kind: 'number' });
+  let inkRead = o.ink && o.ink.parts ? o.ink : null;
+  mountPad($('#padwrap'), (r) => { if (!r) { $('#num-val').value = ''; inkRead = null; return; } inkRead = r; $('#num-val').value = r.text; if (r.value > 0) buzz(6); });
   const apply = () => {
-    const raw = $('#dim-val').value; const v = num(raw);
-    const msg = setEdgeDim(sh, i, v);
-    if (msg && !/scaled/.test(msg)) { toast(msg); return; }
-    if (ink && ink.parts && ink.text !== raw.trim()) { if (Digits.learn(ink.parts, raw.trim())) toast('Thanks. Your handwriting was saved to improve reading.'); }
-    commit(); closeSheet(); render(); if (msg) toast(msg);
+    const raw = $('#num-val').value.trim(); const v = num(raw);
+    if (!Number.isFinite(v) || (o.allowZero ? v < 0 : v <= 0)) { toast(o.allowZero ? 'Enter a number, 0 or more.' : 'Enter a number above 0.'); return; }
+    const res = o.apply(v);
+    if (res && res.ok === false) { toast(res.msg); return; }
+    if (inkRead && inkRead.text !== raw && Digits.learn(inkRead.parts, raw)) toast('Saved your handwriting to read it better next time.');
+    commit(); closeSheet(); render();
+    if (res && res.msg) toast(res.msg);
+    if (guide.active) setTimeout(guideNext, 220);
   };
-  $('#dim-apply').onclick = apply; onEnter($('#dim-val'), apply);
-  const rm = $('#dim-remove'); if (rm) rm.onclick = () => { delete sh.dims[i]; commit(); closeSheet(); render(); };
+  $('#num-apply').onclick = apply; onEnter($('#num-val'), apply);
+  const rm = $('#num-remove'); if (rm) rm.onclick = () => { o.remove(); applyAllLocs(); commit(); closeSheet(); render(); };
+  const sk2 = $('#num-skip'); if (sk2) sk2.onclick = () => { guide.active = false; openReview(); };
+  ensureVisible(focusPoint(focus));
 }
-function openCircleDim(sh, ink) {
-  if (!sh) return; sel = { kind: 'shape', id: sh.id }; render();
-  const first = !sketchCalibrated();
-  openSheet(`
-    <div class="head"><div><h2>Circle diameter</h2><div class="sub">Measured Ø${fmt(sh.r * 2)} mm</div></div>
-      <button class="iconbtn" data-close aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button></div>
-    ${first ? '<p class="note">This is your first dimension, so the whole sketch scales to match it.</p>' : ''}
-    <div class="fields">${field('dim-val', 'Diameter', ink && ink.text ? ink.text : fmt(sh.dim ?? sh.r * 2), 'mm', 'big')}</div>
-    <div class="row"><button class="btn primary grow" id="dim-apply"><svg class="i"><use href="#i-check"/></svg>Apply</button></div>`, { kind: 'shape', id: sh.id });
-  const apply = () => {
-    const raw = $('#dim-val').value; const msg = setCircleDim(sh, num(raw));
-    if (msg && !/scaled/.test(msg)) { toast(msg); return; }
-    if (ink && ink.parts && ink.text !== raw.trim()) Digits.learn(ink.parts, raw.trim());
-    commit(); closeSheet(); render(); if (msg) toast(msg);
-  };
-  $('#dim-apply').onclick = apply; onEnter($('#dim-val'), apply);
+function editEdge(sh, i, o = {}) {
+  if (!sh) return; const [a, b] = edgePts(sh, i); const cur = V.dist(a, b);
+  const st = sh.closed && !sh.smooth ? polyAnalysis(sh).edges[i] : sh.dims[i] != null ? 'dim' : 'free'; const calibrated = sketchCalibrated();
+  const note = !calibrated ? 'First dimension: the whole sketch scales to match it.' : st === 'derived' ? `Already ${fmt(cur)} mm from your other dimensions. Adding it here would set it twice.` : st === 'over' ? 'This length is set twice. Remove it or another one.' : '';
+  openNumberSheet({
+    title: 'Length', sub: calibrated ? `Now ${fmt(cur)} mm` : 'Sketch is not to scale yet', note, label: 'Length', unit: 'mm',
+    value: o.ink && o.ink.text ? o.ink.text : sh.dims[i] != null ? fmt(sh.dims[i]) : '', placeholder: calibrated ? fmt(cur) : '', ink: o.ink, guideText: 'write the length of the highlighted edge',
+    focus: { edge: { id: sh.id, i } },
+    apply: (v) => { const m = setEdgeDim(sh, i, v); return m && !/scaled/.test(m) ? { ok: false, msg: m } : { ok: true, msg: m }; },
+    remove: sh.dims[i] != null ? () => { delete sh.dims[i]; } : null,
+  });
 }
-function containerOf(sh) {
-  const probe = sh.type === 'circle' ? sh.c : sh.pts[0];
-  return shapes().filter((o) => o !== sh && isClosedShape(o) && shapeArea(o) > shapeArea(sh) && pointInPoly(probe, shapeOutline(o))).sort((a, b) => shapeArea(a) - shapeArea(b))[0] || null;
+function editAngle(sh, i) {
+  if (!sh) return; const [a, b] = edgePts(sh, i); let deg = (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI; deg = ((deg % 180) + 180) % 180;
+  openNumberSheet({
+    title: 'Edge angle', sub: `Now ${fmt(deg)}° from horizontal`, note: 'Measured from the horizontal, 0 to 180°.', label: 'Angle', unit: '°',
+    value: sh.angs && sh.angs[i] != null ? fmt(sh.angs[i]) : '', placeholder: fmt(Math.round(deg)), allowZero: true, guideText: 'set the angle of the highlighted edge',
+    focus: { edge: { id: sh.id, i } },
+    apply: (v) => { const m = setEdgeAngle(sh, i, v); return m ? { ok: false, msg: m } : { ok: true }; },
+    remove: sh.angs && sh.angs[i] != null ? () => { delete sh.angs[i]; } : null,
+  });
 }
+function editCircle(sh, o = {}) {
+  if (!sh) return; const calibrated = sketchCalibrated();
+  openNumberSheet({
+    title: 'Diameter', sub: calibrated ? `Now Ø${fmt(sh.r * 2)} mm` : 'Sketch is not to scale yet', note: calibrated ? '' : 'First dimension: the whole sketch scales to match it.',
+    label: 'Diameter', unit: 'mm', value: o.ink && o.ink.text ? o.ink.text : sh.dim != null ? fmt(sh.dim) : '', placeholder: calibrated ? fmt(sh.r * 2) : '', ink: o.ink,
+    guideText: 'write the diameter of the highlighted circle', focus: { circle: sh.id },
+    apply: (v) => { const m = setCircleDim(sh, v); return m && !/scaled/.test(m) ? { ok: false, msg: m } : { ok: true, msg: m }; },
+    remove: sh.dim != null ? () => { sh.dim = null; } : null,
+  });
+}
+function editLoc(sh, loc, o = {}) {
+  if (!sh || !loc) return;
+  const isNew = o.isNew || !(sh.locs || []).includes(loc);
+  const what = sh.type === 'circle' ? 'center' : 'corner';
+  openNumberSheet({
+    title: 'Distance from edge', sub: `Now ${fmt(Math.abs(locDistance(sh, loc)))} mm`, note: `From the ${what} to the highlighted edge.`, label: 'Distance', unit: 'mm',
+    value: isNew ? '' : fmt(loc.d), placeholder: fmt(Math.abs(locDistance(sh, loc))), allowZero: true,
+    guideText: `write the distance from the ${what} to the highlighted edge`, focus: { line: loc.to, point: locAnchor(sh, loc) },
+    apply: (v) => { loc.d = v; if (isNew) addLoc(sh, loc); else applyLocs(sh); return { ok: true }; },
+    remove: isNew ? null : () => { sh.locs = sh.locs.filter((l) => l !== loc); },
+  });
+}
+
+// Guided completion: ask for the next missing size until the sketch is fully defined.
+function startGuide() { guide.active = true; guideNext(); }
+function guideNext() {
+  if (!guide.active) return;
+  const A = analyzeSketch();
+  const item = A.items.find((it) => it.lvl === 'need' && it.act);
+  if (!item) { guide.active = false; buzz(20); openReview(); return; }
+  runAct(item.act);
+}
+function runAct(act) {
+  const sh = act.id ? byId(act.id) : null;
+  switch (act.t) {
+    case 'guide': {
+      // first real dimension: the biggest outline's suggested edge, else a circle
+      const big = shapes().filter((s) => isClosedShape(s) && !(s.type === 'poly' && s.smooth)).sort((a, b) => shapeArea(b) - shapeArea(a))[0];
+      if (!big) { guide.active = false; toast('Draw a closed outline first.'); return; }
+      if (big.type === 'circle') return editCircle(big);
+      const P = polyAnalysis(big); return P.suggest && P.suggest.t === 'len' ? editEdge(big, P.suggest.k) : editEdge(big, 0);
+    }
+    case 'suggest': { const P = polyAnalysis(sh); if (!P.suggest) return guideNext(); return P.suggest.t === 'len' ? editEdge(sh, P.suggest.k) : editAngle(sh, P.suggest.k); }
+    case 'dia': return editCircle(sh);
+    case 'pos': { const loc = suggestLoc(sh); if (!loc) { guide.active = false; toast('No straight edge nearby to measure from. Drag the shape into place instead.'); return; } return editLoc(sh, loc, { isNew: true }); }
+    case 'undim': delete sh.dims[act.k]; commit(); render(); return openReview();
+    case 'unloc': sh.locs = validLocs(sh).slice(0, 1); applyLocs(sh); commit(); render(); return openReview();
+    case 'del': doc.sketch.shapes = shapes().filter((s) => s !== sh); commit(); render(); return openReview();
+    case 'straighten': straighten(sh); commit(); render(); return openReview();
+  }
+}
+function straighten(sh) {
+  const b = bbox(sh.pts); const D = Math.hypot(b.w, b.h); sh.smooth = false; sh.dims = {}; sh.angs = {};
+  sh.pts = sh.closed ? snapClosed(cleanVerts(rdp([...sh.pts, sh.pts[0]], 0.03 * D).slice(0, -1), true, 0.03 * D)) : snapOpen(cleanVerts(rdp(sh.pts, 0.03 * D), false, 0.03 * D));
+}
+
 function openSelSheet(h) {
   if (!h) { closeSheet(); return; }
   const sh = byId(h.id); if (!sh) return;
-  if (h.kind === 'edge') return openEdgeDim(sh, h.i);
-  const close = `<button class="iconbtn" data-close aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button>`;
+  if (h.kind === 'edge') return editEdge(sh, h.i);
   if (h.kind === 'vertex') {
     const p = sh.pts[h.i];
-    openSheet(`<div class="head"><div><h2>Point</h2><div class="sub">Position from sketch origin</div></div>${close}</div>
+    openSheet(`<div class="head"><div><h2>Point</h2><div class="sub">Position from sketch origin</div></div>${closeBtn}</div>
       <div class="fields">${field('v-x', 'X', fmt(p[0]))}${field('v-y', 'Y', fmt(p[1]))}</div>
       <div class="row"><button class="btn primary grow" id="v-apply">Apply</button><button class="btn danger" id="v-del"><svg class="i"><use href="#i-trash"/></svg>Delete point</button></div>`, { kind: 'vertex', id: sh.id });
-    const apply = () => { const x = num($('#v-x').value), y = num($('#v-y').value); if (!Number.isFinite(x) || !Number.isFinite(y)) return toast('Enter numbers for X and Y.'); sh.pts[h.i] = [x, y]; const n = edgeCount(sh); [h.i, (h.i - 1 + sh.pts.length) % sh.pts.length].forEach((k) => { if (k < n) delete sh.dims[k]; }); commit(); render(); toast('Point moved'); };
+    const apply = () => { const x = num($('#v-x').value), y = num($('#v-y').value); if (!Number.isFinite(x) || !Number.isFinite(y)) return toast('Enter numbers for X and Y.'); sh.pts[h.i] = [x, y]; const n = edgeCount(sh); [h.i, (h.i - 1 + sh.pts.length) % sh.pts.length].forEach((k) => { if (k < n) { delete sh.dims[k]; delete sh.angs[k]; } }); applyAllLocs(); commit(); render(); toast('Point moved'); };
     $('#v-apply').onclick = apply; onEnter($('#v-x'), apply); onEnter($('#v-y'), apply);
-    $('#v-del').onclick = () => { if (sh.pts.length <= (sh.closed ? 3 : 2)) { doc.sketch.shapes = shapes().filter((s) => s !== sh); } else { sh.pts.splice(h.i, 1); sh.dims = {}; } sel = null; commit(); closeSheet(); render(); };
+    $('#v-del').onclick = () => { if (sh.pts.length <= (sh.closed ? 3 : 2)) doc.sketch.shapes = shapes().filter((s) => s !== sh); else { sh.pts.splice(h.i, 1); sh.dims = {}; sh.angs = {}; sh.locs = []; } sel = null; applyAllLocs(); commit(); closeSheet(); render(); };
     return;
   }
-  // whole shape
-  const parent = containerOf(sh);
-  const ref = parent ? bbox(shapeOutline(parent)) : { x0: 0, y0: 0 };
-  const refName = parent ? 'from outline edge' : 'from origin';
-  if (sh.type === 'circle') {
-    openSheet(`<div class="head"><div><h2>${parent ? 'Hole' : 'Circle'}</h2><div class="sub">Ø${fmt(sh.r * 2)} mm · center ${refName}</div></div>${close}</div>
-      <div class="fields">${field('c-d', 'Diameter', fmt(sh.r * 2))}${field('c-x', 'X ' + (parent ? 'from left' : ''), fmt(sh.c[0] - ref.x0))}${field('c-y', 'Y ' + (parent ? 'from bottom' : ''), fmt(sh.c[1] - ref.y0))}</div>
-      <div class="row"><button class="btn primary grow" id="c-apply">Apply</button><button class="btn" id="c-dup"><svg class="i"><use href="#i-copy"/></svg>Copy</button><button class="btn danger" id="c-del"><svg class="i"><use href="#i-trash"/></svg></button></div>`, { kind: 'shape', id: sh.id });
-    const apply = () => {
-      const d = num($('#c-d').value), x = num($('#c-x').value), y = num($('#c-y').value);
-      if (![d, x, y].every(Number.isFinite) || d <= 0) return toast('Enter a diameter above 0 and numbers for X and Y.');
-      if (Math.abs(d - sh.r * 2) > 1e-9) { const m = setCircleDim(sh, d); if (m) toast(m); }
-      const ref2 = parent ? bbox(shapeOutline(parent)) : { x0: 0, y0: 0 };
-      sh.c = [ref2.x0 + x, ref2.y0 + y]; commit(); render(); openSelSheet(h);
-    };
-    $('#c-apply').onclick = apply; ['#c-d', '#c-x', '#c-y'].forEach((s) => onEnter($(s), apply));
-  } else {
-    const b = bbox(sh.pts);
-    openSheet(`<div class="head"><div><h2>${sh.closed ? 'Outline' : 'Polyline'}</h2><div class="sub">${fmt(b.w)} × ${fmt(b.h)} mm · ${sh.pts.length} points${sh.smooth ? ' · curve' : ''}</div></div>${close}</div>
-      <p class="note">Drag the shape to move it. Tap an edge to set its length, or a point to place it exactly.</p>
-      <div class="row">${sh.smooth ? '<button class="btn" id="s-straight">Straighten</button>' : ''}<button class="btn" id="c-dup"><svg class="i"><use href="#i-copy"/></svg>Copy</button><button class="btn danger" id="c-del"><svg class="i"><use href="#i-trash"/></svg>Delete</button></div>`, { kind: 'shape', id: sh.id });
-    const st = $('#s-straight'); if (st) st.onclick = () => { sh.smooth = false; sh.pts = sh.closed ? snapClosed(cleanVerts(rdp([...sh.pts, sh.pts[0]], 0.03 * Math.hypot(b.w, b.h)).slice(0, -1), true, 0.03 * Math.hypot(b.w, b.h))) : snapOpen(cleanVerts(rdp(sh.pts, 0.03 * Math.hypot(b.w, b.h)), false, 0.03 * Math.hypot(b.w, b.h))); sh.dims = {}; commit(); render(); openSelSheet(h); };
-  }
-  $('#c-del').onclick = () => { doc.sketch.shapes = shapes().filter((s) => s !== sh); sel = null; commit(); closeSheet(); render(); };
-  $('#c-dup').onclick = () => { const cp = JSON.parse(JSON.stringify(sh)); cp.id = uid(); const off = gridSteps()[1] / 2; if (cp.type === 'circle') cp.c = V.add(cp.c, [off, 0]); else cp.pts = cp.pts.map((p) => V.add(p, [off, 0])); doc.sketch.shapes.push(cp); sel = { kind: 'shape', id: cp.id }; commit(); render(); openSelSheet(sel); };
+  const P = sh.type === 'poly' && !sh.smooth && sh.closed ? polyAnalysis(sh) : null; const pos = posAnalysis(sh);
+  const bits = [];
+  if (sh.type === 'circle') bits.push(`Ø${fmt(sh.r * 2)} mm`); else { const b = bbox(sh.pts); bits.push(`${fmt(b.w)} × ${fmt(b.h)} mm`); }
+  if (P) bits.push(P.dof ? `${plural(P.dof, 'size')} missing` : 'size defined');
+  if (pos.need) bits.push(pos.have >= 2 ? 'position defined' : `${plural(2 - pos.have, 'distance')} missing`);
+  openSheet(`<div class="head"><div><h2>${sh.type === 'circle' ? (pos.need ? 'Hole' : 'Circle') : sh.closed ? 'Outline' : 'Line'}</h2><div class="sub">${bits.join(' · ')}</div></div>${closeBtn}</div>
+    <p class="note">Drag to move. Tap an edge or a dimension to change it.${pos.need ? ' In Dimension mode, drag from it to an edge to set a distance.' : ''}</p>
+    <div class="row">
+      ${sh.type === 'circle' ? '<button class="btn" id="s-dia">Diameter</button>' : ''}
+      ${pos.need && pos.have < 2 ? '<button class="btn" id="s-pos">Add distance</button>' : ''}
+      ${sh.smooth ? '<button class="btn" id="s-straight">Straighten</button>' : ''}
+      <button class="btn" id="c-dup"><svg class="i"><use href="#i-copy"/></svg>Copy</button>
+      <button class="btn danger" id="c-del"><svg class="i"><use href="#i-trash"/></svg>Delete</button>
+    </div>`, { kind: 'shape', id: sh.id });
+  const q = (s) => $(s);
+  if (q('#s-dia')) q('#s-dia').onclick = () => editCircle(sh);
+  if (q('#s-pos')) q('#s-pos').onclick = () => { const loc = suggestLoc(sh); if (loc) editLoc(sh, loc, { isNew: true }); else toast('No straight edge nearby to measure from.'); };
+  if (q('#s-straight')) q('#s-straight').onclick = () => { straighten(sh); commit(); render(); openSelSheet(h); };
+  q('#c-del').onclick = () => { doc.sketch.shapes = shapes().filter((s) => s !== sh); sel = null; applyAllLocs(); commit(); closeSheet(); render(); };
+  q('#c-dup').onclick = () => { const cp = JSON.parse(JSON.stringify(sh)); cp.id = uid(); cp.locs = []; const off = gridSteps()[1] / 2; translateShape(cp, [off, 0]); doc.sketch.shapes.push(cp); sel = { kind: 'shape', id: cp.id }; commit(); render(); openSelSheet(sel); };
 }
-sheet.addEventListener('click', (e) => { if (e.target.closest('[data-close]')) { closeSheet(); sel = null; sel3 = null; refresh3DSelection(); render(); } });
 
-/* Make 3D */
-function openMake3D() {
-  const regions = buildRegions(); const holes = regions.reduce((n, r) => n + r.holes.length, 0);
+/* =========================================================================
+   Review: preview, definition status, confirm
+   ========================================================================= */
+const PV = { cv: document.createElement('canvas'), active: false };
+function previewEnsure() {
+  if (PV.r) return;
+  PV.r = new THREE.WebGLRenderer({ canvas: PV.cv, antialias: true, alpha: true }); PV.r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  PV.scene = new THREE.Scene(); PV.cam = new THREE.PerspectiveCamera(35, 2, 0.1, 1e5);
+  PV.scene.add(new THREE.HemisphereLight(0xffffff, 0x7c8596, 1.7)); const d = new THREE.DirectionalLight(0xffffff, 1.8); d.position.set(1, 2, 1.5); PV.scene.add(d);
+  PV.pivot = new THREE.Group(); PV.scene.add(PV.pivot);
+  const loop = () => { if (!PV.active) return; requestAnimationFrame(loop); PV.pivot.rotation.y += 0.008; PV.r.render(PV.scene, PV.cam); };
+  PV.loop = loop;
+}
+function previewStart(container) {
+  previewEnsure(); container.appendChild(PV.cv);
+  const r = container.getBoundingClientRect(); PV.r.setSize(r.width, r.height, false); PV.cam.aspect = r.width / r.height; PV.cam.updateProjectionMatrix();
+  if (!PV.active) { PV.active = true; PV.loop(); }
+}
+function previewStop() { PV.active = false; }
+function previewSet(objs) {
+  if (!PV.r) return;
+  PV.pivot.children.slice().forEach((o) => { PV.pivot.remove(o); o.traverse((x) => { if (x.geometry && x.userData.own) x.geometry.dispose(); }); });
+  const box = new THREE.Box3(); objs.forEach((o) => { o.updateMatrixWorld(true); box.expandByObject(o); });
+  if (box.isEmpty()) return;
+  const c = box.getCenter(new THREE.Vector3()); const size = box.getSize(new THREE.Vector3()).length();
+  const holder = new THREE.Group(); holder.position.copy(c).multiplyScalar(-1); objs.forEach((o) => holder.add(o)); PV.pivot.add(holder);
+  const dist = size / (2 * Math.tan((PV.cam.fov * Math.PI) / 360)) * 1.15;
+  PV.cam.position.set(0.9, 0.75, 1.2).normalize().multiplyScalar(dist); PV.cam.near = dist / 100; PV.cam.far = dist * 20; PV.cam.lookAt(0, 0, 0); PV.cam.updateProjectionMatrix();
+}
+function solidMesh(g, color, opts = {}) {
+  const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.05, transparent: !!opts.opacity, opacity: opts.opacity || 1, side: opts.double ? THREE.DoubleSide : THREE.FrontSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1, depthWrite: !opts.opacity }));
+  m.userData.own = !opts.shared;
+  if (!opts.noEdges) { const e = new THREE.LineSegments(opts.mesh ? featureEdges(g) : new THREE.EdgesGeometry(g, 28), new THREE.LineBasicMaterial({ color: opts.edge || tok.ink, transparent: true, opacity: 0.7 })); e.userData.own = true; m.add(e); }
+  return m;
+}
+
+function baseRecipe(op, val) {
+  const regions = buildRegions();
+  if (op === 'extrude') { if (!regions.length) return null; const c = regionsCenter(regions); return { kind: 'extrude', depth: val, regions: regions.map((r) => ({ outer: shapeRecipe(r.sh, c), holes: r.holes.map((h) => shapeRecipe(h.sh, c)) })) }; }
   const opens = shapes().filter((s) => s.type === 'poly' && !s.closed);
-  if (!regions.length && !opens.length) { toast('Draw a closed outline first. Close the loop where you started.'); return; }
-  const lastOp = store.get('napkin.op') || 'extrude';
-  openSheet(`<div class="head"><div><h2>Make 3D part</h2><div class="sub">${regions.length} outline${regions.length === 1 ? '' : 's'} · ${holes} hole${holes === 1 ? '' : 's'}${opens.length ? ` · ${opens.length} open line${opens.length === 1 ? '' : 's'}` : ''}</div></div>
-      <button class="iconbtn" data-close aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button></div>
-    <div class="seg" role="group" aria-label="Operation" style="margin-bottom:12px"><button id="op-extrude" aria-pressed="${lastOp === 'extrude'}">Extrude</button><button id="op-revolve" aria-pressed="${lastOp === 'revolve'}">Revolve</button></div>
-    <p class="note" id="op-note"></p>
-    <div class="fields" id="op-fields"></div>
-    <div class="row"><button class="btn primary grow" id="op-go"><svg class="i"><use href="#i-cube"/></svg>Create part</button></div>`, { kind: 'make3d' });
-  let op = lastOp;
-  const paint = () => {
-    $('#op-extrude').setAttribute('aria-pressed', op === 'extrude'); $('#op-revolve').setAttribute('aria-pressed', op === 'revolve');
-    if (op === 'extrude') { $('#op-note').textContent = 'Pushes every closed outline up into a solid. Shapes drawn inside an outline become holes.'; $('#op-fields').innerHTML = field('op-depth', 'Thickness', store.get('napkin.depth') || '10', 'mm', 'big'); }
-    else { $('#op-note').textContent = 'Spins the largest outline around its left edge, like a lathe. Draw half the profile of a cup, knob or bottle.'; $('#op-fields').innerHTML = field('op-angle', 'Angle', '360', '°', 'big'); }
-    onEnter($('#op-depth') || $('#op-angle'), go);
-  };
-  const go = () => {
-    store.set('napkin.op', op);
-    if (op === 'extrude') {
-      const depth = num($('#op-depth').value); if (!(depth > 0)) return toast('Enter a thickness above 0.');
-      if (!regions.length) return toast('Extrude needs a closed outline.');
-      store.set('napkin.depth', String(depth));
-      const c = regionsCenter(regions);
-      const recipe = { kind: 'extrude', depth, regions: regions.map((r) => ({ outer: shapeRecipe(r.sh, c), holes: r.holes.map((h) => shapeRecipe(h.sh, c)) })) };
-      createFromSketch(recipe, 'Extrusion');
-    } else {
-      const angle = num($('#op-angle').value); if (!(angle > 0 && angle <= 360)) return toast('Enter an angle from 1 to 360.');
-      const target = regions.length ? regions[0].sh : opens.sort((a, b) => pathLen(b.pts) - pathLen(a.pts))[0];
-      const pts = shapeOutline(target); const b = bbox(pts);
-      const profile = pts.map((p) => [p[0] - b.x0, p[1] - b.y0]);
-      createFromSketch({ kind: 'revolve', angle, closed: isClosedShape(target), profile }, 'Revolve');
-    }
-  };
-  $('#op-extrude').onclick = () => { op = 'extrude'; paint(); }; $('#op-revolve').onclick = () => { op = 'revolve'; paint(); };
-  $('#op-go').onclick = go; paint();
+  const target = regions.length ? regions[0].sh : opens.sort((a, b) => pathLen(b.pts) - pathLen(a.pts))[0];
+  if (!target) return null;
+  const pts = shapeOutline(target); const b = bbox(pts);
+  return { kind: 'revolve', angle: val, closed: isClosedShape(target), profile: pts.map((p) => [p[0] - b.x0, p[1] - b.y0]) };
 }
 function regionsCenter(regions) { const b = bbox(regions.flatMap((r) => r.outline)); return [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2]; }
 function shapeRecipe(sh, c) { return sh.type === 'circle' ? { type: 'circle', c: V.sub(sh.c, c), r: sh.r } : { type: 'poly', pts: sh.pts.map((p) => V.sub(p, c)) }; }
+
+function openReview() {
+  if (!shapes().length) { toast('Draw something first.'); return; }
+  guide.active = false; sel = null;
+  const A = analyzeSketch(); const face = doc.sketch.plane; if (face) init3D();
+  const ops = face ? [['add', 'Add material'], ['cut', 'Cut'], ['through', 'Cut through']] : [['extrude', 'Extrude'], ['revolve', 'Revolve']];
+  let op = store.get(face ? 'napkin.fop' : 'napkin.op'); if (!ops.some((o) => o[0] === op)) op = ops[0][0];
+  const st = {
+    full: ['ok', 'i-check', 'Fully defined', 'Every size and position comes from your dimensions.'],
+    under: ['warn', 'i-warn', A.need ? `Needs ${plural(A.need, 'more dimension')}` : 'Partly from your drawing', A.need ? 'Missing sizes are amber on the sketch.' : 'Freeform curves take their size from the drawing.'],
+    unscaled: ['warn', 'i-warn', 'Not to scale yet', 'Add one real dimension and the whole sketch scales to match.'],
+    over: ['bad', 'i-x', 'Over-defined', 'Some sizes are set twice. Remove the extra ones.'],
+    empty: ['idle', 'i-warn', 'Nothing to build yet', 'Close an outline by ending where you started.'],
+  }[A.status];
+  const items = A.items.map((it, k) => `<li class="${it.lvl}"><span class="tag"></span><span>${esc(it.text)}</span>${it.act ? `<button class="btn sm" data-item="${k}">${esc(it.btn || 'Fix')}</button>` : ''}</li>`).join('');
+  const canBuild = A.closed > 0 || (!face && shapes().some((s) => s.type === 'poly' && !s.closed));
+  openSheet(`<div class="head"><div><h2>${face ? 'Review face sketch' : 'Review sketch'}</h2><div class="sub">${face ? `On ${esc(face.label)} face of ${esc(partName(face.partId))}` : `${plural(A.closed, 'outline')}`}</div></div>${closeBtn}</div>
+    <div class="status ${st[0]}"><svg class="i"><use href="#${st[1]}"/></svg><div><b>${st[2]}</b><span>${st[3]}</span></div></div>
+    <div class="preview" id="pv"></div>
+    <div class="seg" role="group" aria-label="Operation" style="margin-bottom:12px">${ops.map(([k, l]) => `<button data-op="${k}" aria-pressed="${k === op}">${l}</button>`).join('')}</div>
+    <div class="fields" id="op-fields"></div>
+    ${items ? `<ul class="issues">${items}</ul>` : ''}
+    <div class="row">
+      ${A.need ? `<button class="btn primary grow" id="rv-guide">Add missing dimensions</button>` : ''}
+      <button class="btn ${A.need || A.over ? '' : 'primary'} grow" id="rv-go" ${canBuild ? '' : 'disabled'}><svg class="i"><use href="#i-check"/></svg>${A.status === 'full' ? 'Confirm &amp; create' : 'Create anyway'}</button>
+    </div>`, { kind: 'review' });
+  const fieldsFor = () => {
+    if (op === 'revolve') return field('op-val', 'Angle', '360', '°');
+    if (op === 'through') return '';
+    return field('op-val', op === 'extrude' ? 'Thickness' : 'Depth', store.get(face ? 'napkin.fdepth' : 'napkin.depth') || (face ? '5' : '10'), 'mm');
+  };
+  const value = () => { const el = $('#op-val'); return el ? num(el.value) : 0; };
+  let pvT = 0;
+  const updatePreview = () => { clearTimeout(pvT); pvT = setTimeout(() => {
+    try {
+      const v = value();
+      if (face) {
+        const part = doc.parts.find((p) => p.id === face.partId); if (!part || !part.mesh) return;
+        const ghost = solidMesh(part.mesh.geometry, part.color, { shared: true, mesh: part.recipe.kind === 'mesh', opacity: op === 'add' ? 1 : 0.45 });
+        ghost.position.copy(part.mesh.position); ghost.rotation.copy(part.mesh.rotation); ghost.userData.own = false;
+        const regions = buildRegions(); const objs = [ghost];
+        if (regions.length && (op === 'through' || v > 0)) objs.push(solidMesh(featureGeometry(face, regions, op, v, part), op === 'add' ? tok.ok : tok.danger, { opacity: op === 'add' ? 0 : 0.85, edge: op === 'add' ? tok.ok : tok.danger }));
+        previewSet(objs);
+      } else {
+        const r = baseRecipe(op, v > 0 ? v : op === 'revolve' ? 360 : 10); if (!r) return;
+        previewSet([solidMesh(buildGeometry(r), COLORS[doc.parts.length % COLORS.length], { double: r.kind === 'revolve' })]);
+      }
+    } catch (err) { console.error(err); }
+  }, 120); };
+  const paint = () => {
+    sheet.querySelectorAll('[data-op]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.op === op));
+    $('#op-fields').innerHTML = fieldsFor(); const el = $('#op-val'); if (el) { el.addEventListener('input', updatePreview); onEnter(el, go); }
+    updatePreview();
+  };
+  const go = () => {
+    const v = value(); store.set(face ? 'napkin.fop' : 'napkin.op', op);
+    if (op !== 'through' && !(v > 0)) return toast('Enter a value above 0.');
+    if (op === 'revolve' && v > 360) return toast('Angle can be at most 360°.');
+    if (op === 'extrude' || op === 'add' || op === 'cut') store.set(face ? 'napkin.fdepth' : 'napkin.depth', String(v));
+    confirmSketch(op, v);
+  };
+  sheet.querySelectorAll('[data-op]').forEach((b) => (b.onclick = () => { op = b.dataset.op; paint(); }));
+  sheet.querySelectorAll('[data-item]').forEach((b) => (b.onclick = () => { const it = A.items[+b.dataset.item]; guide.active = it.lvl === 'need'; runAct(it.act); }));
+  if ($('#rv-guide')) $('#rv-guide').onclick = startGuide;
+  $('#rv-go').onclick = go;
+  requestAnimationFrame(() => { previewStart($('#pv')); paint(); });
+}
+function partName(id) { const p = doc.parts.find((q) => q.id === id); return p ? p.name : 'part'; }
+function consumeSketch() { doc.sketch = doc.stash || newSketch(); doc.stash = null; sel = null; focus = null; live.handwriting = []; updateFaceChip(); }
+function confirmSketch(op, v) {
+  if (doc.sketch.plane) return featureFromSketch(op, v);
+  const r = baseRecipe(op, v); if (!r) return toast(op === 'extrude' ? 'Extrude needs a closed outline.' : 'Draw a profile first.');
+  createFromSketch(r, op === 'extrude' ? 'Extrusion' : 'Revolve');
+}
 
 /* =========================================================================
    3D workspace
    ========================================================================= */
 const T = { ready: false };
-let sel3 = null; let pickMode = null; // {op, a}
+let sel3 = null; let pickMode = null; let selFace = null; let partMoreOpen = false;
 function init3D() {
   if (T.ready) return; T.ready = true;
   const cv = $('#view3d');
@@ -1260,7 +1795,7 @@ function init3D() {
   doc.parts.forEach((p) => p.mesh || buildPartMesh(p));
   setupPicking(cv);
   new ResizeObserver(resize3D).observe($('#stage'));
-  resize3D(); setView('iso', true);
+  resize3D(); setView('iso');
   const loop = () => { requestAnimationFrame(loop); if (mode !== '3d') return; const moved = T.controls.update(); if (moved || T.dirty) { T.renderer.render(T.scene, T.camera); T.dirty = false; } };
   T.controls.addEventListener('change', () => (T.dirty = true));
   loop();
@@ -1269,12 +1804,12 @@ function theme3D() {
   if (!T.ready) return;
   T.scene.background = new THREE.Color(tok.paper);
   T.gridGroup.clear();
-  const g1 = new THREE.GridHelper(400, 40, new THREE.Color(tok['grid-major']), new THREE.Color(tok.grid)); T.gridGroup.add(g1);
+  T.gridGroup.add(new THREE.GridHelper(400, 40, new THREE.Color(tok['grid-major']), new THREE.Color(tok.grid)));
   const g2 = new THREE.GridHelper(2000, 20, new THREE.Color(tok['grid-major']), new THREE.Color(tok['grid-major'])); g2.position.y = -0.01; T.gridGroup.add(g2);
-  const ax = (dir, color) => { const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), dir.clone().multiplyScalar(40)]); return new THREE.Line(g, new THREE.LineBasicMaterial({ color })); };
+  const ax = (dir, color) => new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), dir.clone().multiplyScalar(40)]), new THREE.LineBasicMaterial({ color }));
   T.gridGroup.add(ax(new THREE.Vector3(1, 0, 0), 0xd6453d), ax(new THREE.Vector3(0, 1, 0), 0x3aa55d), ax(new THREE.Vector3(0, 0, 1), 0x3f6fe0));
-  T.parts.children.forEach((m) => { const e = m.children[0]; if (e) e.material.color.set(m.userData.part === sel3 ? tok.accent : tok.ink); });
-  T.dirty = true;
+  if (T.faceHi) T.faceHi.material.color.set(tok.accent);
+  refresh3DSelection(); T.dirty = true;
 }
 function resize3D() {
   if (!T.ready) return; const r = $('#stage').getBoundingClientRect(); if (!r.width) return;
@@ -1288,11 +1823,11 @@ function updateViewOffset() {
   if (dy > 0) T.camera.setViewOffset(r.width, r.height, 0, dy, r.width, r.height); else T.camera.clearViewOffset();
   T.dirty = true;
 }
-function setView(name, instant) {
+function setView(name) {
   const box = partsBox(); const c = box ? box.getCenter(new THREE.Vector3()) : new THREE.Vector3(0, 10, 0);
   const size = box ? box.getSize(new THREE.Vector3()).length() : 120;
   const dirs = { iso: [1, 0.85, 1.2], top: [0, 1, 0.0001], front: [0, 0.0001, 1], right: [1, 0.0001, 0] };
-  let dir = name === 'fit' ? T.camera.position.clone().sub(T.controls.target).normalize() : new THREE.Vector3(...dirs[name]).normalize();
+  const dir = name === 'fit' ? T.camera.position.clone().sub(T.controls.target).normalize() : new THREE.Vector3(...dirs[name]).normalize();
   const half = Math.min(Math.tan((T.camera.fov * Math.PI) / 360), Math.tan((T.camera.fov * Math.PI) / 360) * T.camera.aspect);
   const dist = (Math.max(size, 30) / (2 * half)) * 1.1;
   T.controls.target.copy(c); T.camera.position.copy(c.clone().add(dir.multiplyScalar(dist))); T.camera.near = Math.max(dist / 500, 0.1); T.camera.far = dist * 50; T.camera.updateProjectionMatrix(); T.controls.update(); T.dirty = true;
@@ -1320,7 +1855,7 @@ function buildGeometry(r) {
       g = new THREE.ExtrudeGeometry(shapesT, { depth: r.depth, bevelEnabled: false, curveSegments: 48 }); g.rotateX(-Math.PI / 2); break;
     }
     case 'revolve': {
-      let pts = r.profile.map((p) => new THREE.Vector2(Math.max(p[0], 0), p[1]));
+      const pts = r.profile.map((p) => new THREE.Vector2(Math.max(p[0], 0), p[1]));
       if (r.closed) { if (signedArea(r.profile) < 0) pts.reverse(); pts.push(pts[0].clone()); }
       g = new THREE.LatheGeometry(pts, 96, 0, (r.angle * Math.PI) / 180);
       g = g.toNonIndexed(); g.computeVertexNormals(); break;
@@ -1329,31 +1864,58 @@ function buildGeometry(r) {
   }
   g.computeBoundingBox(); return g;
 }
+// Crease edges only: hides seams between coplanar triangles (common after boolean operations).
+function featureEdges(g, deg = 28) {
+  const pos = g.getAttribute('position'), idx = g.index; const n = idx ? idx.count : pos.count;
+  const P = (i) => new THREE.Vector3().fromBufferAttribute(pos, idx ? idx.getX(i) : i);
+  const key = (v) => `${Math.round(v.x * 1e4)},${Math.round(v.y * 1e4)},${Math.round(v.z * 1e4)}`;
+  const faces = [], edgeMap = new Map(), vertFaces = new Map(); const cos = Math.cos((deg * Math.PI) / 180);
+  for (let i = 0; i < n; i += 3) {
+    const a = P(i), b = P(i + 1), c = P(i + 2); const nr = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a));
+    if (nr.lengthSq() < 1e-14) continue; nr.normalize(); const f = faces.length; faces.push({ n: nr, p: a });
+    const ks = [key(a), key(b), key(c)], vs = [a, b, c];
+    ks.forEach((k) => (vertFaces.get(k) || vertFaces.set(k, []).get(k)).push(f));
+    for (let e = 0; e < 3; e++) { const k1 = ks[e], k2 = ks[(e + 1) % 3]; const ek = k1 < k2 ? k1 + '|' + k2 : k2 + '|' + k1; const rec = edgeMap.get(ek); if (rec) rec.f.push(f); else edgeMap.set(ek, { a: vs[e], b: vs[(e + 1) % 3], ka: k1, kb: k2, f: [f] }); }
+  }
+  const out = [];
+  for (const e of edgeMap.values()) {
+    let draw = false;
+    if (e.f.length === 2) draw = faces[e.f[0]].n.dot(faces[e.f[1]].n) < cos;
+    else {
+      const f0 = faces[e.f[0]]; const mid = e.a.clone().add(e.b).multiplyScalar(0.5); const tol = 1e-3 * Math.max(1, e.a.distanceTo(e.b));
+      const near = new Set([...(vertFaces.get(e.ka) || []), ...(vertFaces.get(e.kb) || [])]);
+      for (const fi of near) { const f = faces[fi]; if (f.n.dot(f0.n) < cos && Math.abs(f.n.dot(mid.clone().sub(f.p))) < tol) { draw = true; break; } }
+      if (e.f.length > 2) draw = true;
+    }
+    if (draw) out.push(e.a.x, e.a.y, e.a.z, e.b.x, e.b.y, e.b.z);
+  }
+  const eg = new THREE.BufferGeometry(); eg.setAttribute('position', new THREE.Float32BufferAttribute(out, 3)); return eg;
+}
+const edgesFor = (g, kind) => (kind === 'mesh' ? featureEdges(g) : new THREE.EdgesGeometry(g, 28));
 function partData(p) { return { id: p.id, name: p.name, color: p.color, recipe: p.recipe, pos: p.pos, rot: p.rot }; }
 function buildPartMesh(p) {
   if (!T.ready) return;
   if (p.mesh) { T.parts.remove(p.mesh); p.mesh.geometry.dispose(); p.mesh.children[0].geometry.dispose(); }
   const g = buildGeometry(p.recipe);
   const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: p.color, roughness: 0.55, metalness: 0.05, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1, side: p.recipe.kind === 'revolve' && (!p.recipe.closed || p.recipe.angle < 360) ? THREE.DoubleSide : THREE.FrontSide }));
-  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(g, 28), new THREE.LineBasicMaterial({ color: p === sel3 ? tok.accent : tok.ink, transparent: true, opacity: 0.75 }));
-  m.add(edges); m.userData.part = p; p.mesh = m; applyTransform(p); T.parts.add(m); T.dirty = true;
+  m.add(new THREE.LineSegments(edgesFor(g, p.recipe.kind), new THREE.LineBasicMaterial({ color: p === sel3 ? tok.accent : tok.ink, transparent: true, opacity: 0.75 })));
+  m.userData.part = p; p.mesh = m; applyTransform(p); T.parts.add(m); T.dirty = true;
 }
 function applyTransform(p) { if (!p.mesh) return; p.mesh.position.set(...p.pos); p.mesh.rotation.set(...p.rot.map((d) => (d * Math.PI) / 180)); p.mesh.updateMatrixWorld(true); T.dirty = true; }
 function addPart(data, select = true) {
   const p = { id: data.id || uid(), name: data.name || 'Part', color: data.color || COLORS[doc.parts.length % COLORS.length], recipe: data.recipe, pos: data.pos || [0, 0, 0], rot: data.rot || [0, 0, 0], mesh: null };
   doc.parts.push(p); buildPartMesh(p); if (select) sel3 = p; return p;
 }
-function clearParts() { doc.parts.forEach((p) => { if (p.mesh) { T.parts.remove(p.mesh); p.mesh.geometry.dispose(); } }); doc.parts = []; }
-function freeSpotX(width) {
-  if (!doc.parts.length || !T.ready) return 0;
-  const b = partsBox(); return b ? b.max.x + 10 + width / 2 : 0;
-}
+function removePart(p) { if (p.mesh && T.ready) { T.parts.remove(p.mesh); p.mesh.geometry.dispose(); } doc.parts = doc.parts.filter((q) => q !== p); }
+function clearParts() { doc.parts.slice().forEach(removePart); doc.parts = []; }
+function freeSpotX(width) { if (!doc.parts.length || !T.ready) return 0; const b = partsBox(); return b ? b.max.x + 10 + width / 2 : 0; }
 function createFromSketch(recipe, name) {
   setMode('3d');
   const g = buildGeometry(recipe); const w = g.boundingBox.max.x - g.boundingBox.min.x; g.dispose();
   const n = doc.parts.filter((p) => p.name.startsWith(name)).length + 1;
   const p = addPart({ name: `${name} ${n}`, recipe, pos: [freeSpotX(w), 0, 0] });
-  commit(); refresh3DSelection(); setView('iso'); openPartSheet(p);
+  consumeSketch(); commit(); render(); refresh3DSelection(); setView('iso'); openPartSheet(p);
+  toast('Sketch confirmed. Tap the part again on a flat face to sketch on it.', null, 5000);
 }
 function addPrimitive(kind) {
   const defs = { box: { kind: 'box', w: 30, d: 20, h: 15 }, cyl: { kind: 'cyl', d: 20, h: 25 }, sphere: { kind: 'sphere', d: 25 }, cone: { kind: 'cone', d: 24, h: 30 } };
@@ -1368,17 +1930,116 @@ function refresh3DSelection() {
   T.parts.children.forEach((m) => { const p = m.userData.part; m.children[0].material.color.set(p === sel3 ? tok.accent : tok.ink); m.children[0].material.opacity = p === sel3 ? 1 : 0.75; m.material.emissive.set(p === sel3 ? tok.accent : '#000000'); m.material.emissiveIntensity = p === sel3 ? 0.12 : 0; });
   T.dirty = true;
 }
-function partSize(p) { const b = new THREE.Box3().setFromObject(p.mesh); const s = b.getSize(new THREE.Vector3()); return s; }
+const partSize = (p) => new THREE.Box3().setFromObject(p.mesh).getSize(new THREE.Vector3());
+
+// ---- Faces: find the flat face under a tap, its outline, and a 2D frame on it
+function computeFace(hit) {
+  const mesh = hit.object, g = mesh.geometry, pos = g.getAttribute('position'), idx = g.index; mesh.updateMatrixWorld(true);
+  const n = hit.face.normal.clone().applyMatrix3(new THREE.Matrix3().getNormalMatrix(mesh.matrixWorld)).normalize();
+  const p0 = hit.point.clone(); const box = new THREE.Box3().setFromObject(mesh); const tol = 1e-3 * Math.max(1, box.getSize(new THREE.Vector3()).length());
+  const A = new THREE.Vector3(), B = new THREE.Vector3(), C = new THREE.Vector3(), e1 = new THREE.Vector3(), e2 = new THREE.Vector3();
+  const tris = []; const cnt = idx ? idx.count : pos.count;
+  for (let i = 0; i < cnt; i += 3) {
+    A.fromBufferAttribute(pos, idx ? idx.getX(i) : i).applyMatrix4(mesh.matrixWorld);
+    B.fromBufferAttribute(pos, idx ? idx.getX(i + 1) : i + 1).applyMatrix4(mesh.matrixWorld);
+    C.fromBufferAttribute(pos, idx ? idx.getX(i + 2) : i + 2).applyMatrix4(mesh.matrixWorld);
+    e1.subVectors(B, A); e2.subVectors(C, A); const cr = e1.clone().cross(e2); const ar = cr.length(); if (ar < 1e-10) continue; cr.divideScalar(ar);
+    if (cr.dot(n) < 0.9995) continue;
+    if (Math.abs(n.dot(e1.subVectors(A, p0))) > tol || Math.abs(n.dot(e1.subVectors(B, p0))) > tol || Math.abs(n.dot(e1.subVectors(C, p0))) > tol) continue;
+    tris.push(A.clone(), B.clone(), C.clone());
+  }
+  if (!tris.length) return null;
+  let u, v;
+  if (Math.abs(n.y) > 0.9) { u = new THREE.Vector3(1, 0, 0); u.sub(n.clone().multiplyScalar(n.dot(u))).normalize(); v = n.clone().cross(u); }
+  else { v = new THREE.Vector3(0, 1, 0); v.sub(n.clone().multiplyScalar(n.dot(v))).normalize(); u = v.clone().cross(n); }
+  const key = (p) => `${Math.round(p.x * 1000)},${Math.round(p.y * 1000)},${Math.round(p.z * 1000)}`;
+  const edges = new Map(); const ptOf = new Map();
+  for (let i = 0; i < tris.length; i += 3) for (let k = 0; k < 3; k++) {
+    const a = tris[i + k], b = tris[i + ((k + 1) % 3)]; const ka = key(a), kb = key(b); ptOf.set(ka, a); ptOf.set(kb, b);
+    const ek = ka < kb ? ka + '|' + kb : kb + '|' + ka; const e = edges.get(ek); if (e) e.n++; else edges.set(ek, { a: ka, b: kb, n: 1 });
+  }
+  const adj = new Map(); for (const e of edges.values()) if (e.n === 1) { (adj.get(e.a) || adj.set(e.a, []).get(e.a)).push(e.b); (adj.get(e.b) || adj.set(e.b, []).get(e.b)).push(e.a); }
+  const to2 = (p) => [p.clone().sub(p0).dot(u), p.clone().sub(p0).dot(v)];
+  const used = new Set(); const loops = [];
+  for (const start of adj.keys()) {
+    if (used.has(start)) continue; const loop = [start]; used.add(start); let prev = null, cur = start, closed = false;
+    for (let guard = 0; guard < 100000; guard++) {
+      const nx = (adj.get(cur) || []).find((k) => k !== prev && (!used.has(k) || (k === start && loop.length > 2)));
+      if (!nx) break; if (nx === start) { closed = true; break; } loop.push(nx); used.add(nx); prev = cur; cur = nx;
+    }
+    let pts = loop.map((k) => to2(ptOf.get(k)));
+    if (closed && pts.length >= 3) pts = cleanVerts(pts, true, 1e-4, 0.5);
+    if (pts.length >= 2) loops.push({ pts, closed: closed && pts.length >= 3 });
+  }
+  const all = loops.flatMap((l) => l.pts); if (!all.length) return null;
+  const bb = bbox(all); if (Math.min(bb.w, bb.h) < 0.3) return { curved: true };
+  const c2 = [(bb.x0 + bb.x1) / 2, (bb.y0 + bb.y1) / 2];
+  loops.forEach((l) => { l.pts = l.pts.map((p) => V.sub(p, c2)); });
+  const o = p0.clone().add(u.clone().multiplyScalar(c2[0])).add(v.clone().multiplyScalar(c2[1]));
+  const label = n.y > 0.9 ? 'top' : n.y < -0.9 ? 'bottom' : n.z > 0.9 ? 'front' : n.z < -0.9 ? 'back' : n.x > 0.9 ? 'right' : n.x < -0.9 ? 'left' : 'angled';
+  // store the plane in the part's own frame so it survives moving the part
+  const inv = mesh.matrixWorld.clone().invert();
+  const lo = o.clone().applyMatrix4(inv), lu = u.clone().transformDirection(inv), lv = v.clone().transformDirection(inv), ln = n.clone().transformDirection(inv);
+  return { partId: mesh.userData.part.id, label, w: bb.w, h: bb.h, loops, tris, lo: lo.toArray(), lu: lu.toArray(), lv: lv.toArray(), ln: ln.toArray() };
+}
+function worldPlane(pl, part) {
+  part.mesh.updateMatrixWorld(true); const m = part.mesh.matrixWorld;
+  return { o: new THREE.Vector3(...pl.lo).applyMatrix4(m), u: new THREE.Vector3(...pl.lu).transformDirection(m), v: new THREE.Vector3(...pl.lv).transformDirection(m), n: new THREE.Vector3(...pl.ln).transformDirection(m) };
+}
+function showFace(f) {
+  clearFace(); selFace = f; if (!f || !T.ready) return;
+  const g = new THREE.BufferGeometry().setFromPoints(f.tris);
+  T.faceHi = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: tok.accent, transparent: true, opacity: 0.38, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, depthWrite: false, side: THREE.DoubleSide }));
+  T.scene.add(T.faceHi); T.dirty = true;
+}
+function clearFace() { selFace = null; if (T.faceHi) { T.scene.remove(T.faceHi); T.faceHi.geometry.dispose(); T.faceHi = null; T.dirty = true; } }
+function startFaceSketch(part, f) {
+  if (doc.sketch.shapes.length && !doc.sketch.plane) doc.stash = doc.sketch;
+  doc.sketch = { shapes: [], refs: f.loops, plane: { partId: part.id, label: f.label, lo: f.lo, lu: f.lu, lv: f.lv, ln: f.ln } };
+  clearFace(); sel3 = null; commit(); setMode('sketch'); setTool('draw'); fitSketch(); render(); updateFaceChip();
+  showHint(`<b>Sketching on the ${esc(f.label)} face.</b> Draw what to add or cut, write its sizes, then tap Review.`, 7000);
+}
+function exitFaceSketch() {
+  if (!doc.sketch.plane) return;
+  consumeSketch(); commit(); render(); setMode('3d'); toast('Face sketch discarded', [{ label: 'Undo', fn: undo }]);
+}
+function updateFaceChip() {
+  const pl = doc.sketch.plane; const chip = $('#face-chip');
+  chip.hidden = !pl || mode !== 'sketch'; if (pl) $('#face-chip-text').textContent = `${pl.label[0].toUpperCase() + pl.label.slice(1)} face · ${partName(pl.partId)}`;
+}
+function featureGeometry(pl, regions, op, depth, part) {
+  const W = worldPlane(pl, part);
+  const shapesT = regions.map((r) => { const s = shapeToThree(shapeRecipe(r.sh, [0, 0]), false); r.holes.forEach((h) => s.holes.push(shapeToThree(shapeRecipe(h.sh, [0, 0]), true))); return s; });
+  const big = new THREE.Box3().setFromObject(part.mesh).getSize(new THREE.Vector3()).length() * 2 + 10;
+  let z0, z1; if (op === 'add') { z0 = -0.02; z1 = depth; } else if (op === 'cut') { z0 = -depth; z1 = 0.05; } else { z0 = -big; z1 = 0.05; }
+  const g = new THREE.ExtrudeGeometry(shapesT, { depth: z1 - z0, bevelEnabled: false, curveSegments: 48 }); g.translate(0, 0, z0);
+  g.applyMatrix4(new THREE.Matrix4().makeBasis(W.u, W.v, W.n).setPosition(W.o)); return g;
+}
+async function featureFromSketch(op, depth) {
+  const pl = doc.sketch.plane; const part = doc.parts.find((p) => p.id === pl.partId);
+  if (!part) { toast('That part no longer exists. Exit the face sketch.'); return; }
+  const regions = buildRegions(); if (!regions.length) { toast('Draw a closed shape on the face first.'); return; }
+  init3D(); const g = featureGeometry(pl, regions, op, depth, part);
+  setMode('3d'); toast('Building…', null, 20000);
+  const np = await csgApply(part, g, op === 'add' ? 'union' : 'subtract', part.name);
+  g.dispose(); if (!np) return;
+  consumeSketch(); commit(); render(); refresh3DSelection(); openPartSheet(np);
+  toast(op === 'add' ? `Added to ${np.name}` : `Cut into ${np.name}`, [{ label: 'Undo', fn: undo }]);
+}
 
 function openPartSheet(p) {
+  if (sel3 !== p) clearFace();
   sel3 = p; refresh3DSelection();
   const r = p.recipe; const s = partSize(p);
   const params = {
     box: [['w', 'Width X'], ['d', 'Depth Z'], ['h', 'Height Y']], cyl: [['d', 'Diameter'], ['h', 'Height']], cone: [['d', 'Base Ø'], ['h', 'Height']],
     sphere: [['d', 'Diameter']], extrude: [['depth', 'Thickness']], revolve: [['angle', 'Angle', '°']], mesh: [],
   }[r.kind];
-  openSheet(`<div class="head"><div><h2>${esc(p.name)}</h2><div class="sub">${fmt(s.x)} × ${fmt(s.z)} × ${fmt(s.y)} mm (W×D×H)</div></div>
-      <button class="iconbtn" data-close aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button></div>
+  const f = selFace && selFace.partId === p.id ? selFace : null;
+  openSheet(`<div class="head"><div><h2>${esc(p.name)}</h2><div class="sub">${fmt(s.x)} × ${fmt(s.z)} × ${fmt(s.y)} mm (W×D×H)</div></div>${closeBtn}</div>
+    ${f ? `<div class="facebox"><div><b>${esc(f.label[0].toUpperCase() + f.label.slice(1))} face</b> · ${fmt(f.w)} × ${fmt(f.h)} mm</div><button class="btn primary" id="pp-sketch"><svg class="i"><use href="#i-pen"/></svg>Sketch on this face</button></div>`
+      : '<p class="note">Tap a flat face of this part to sketch on it.</p>'}
+    <details class="more" id="pp-more"${partMoreOpen ? ' open' : ''}><summary>Size, position, colour, combine</summary>
     ${params.length ? `<div class="section-label">Size</div><div class="fields">${params.map(([k, l, u]) => field('pp-' + k, l, fmt(r[k]), u || 'mm')).join('')}</div>` : ''}
     <div class="section-label">Position · or drag the part</div>
     <div class="fields">${field('pp-x', 'X', fmt(p.pos[0]))}${field('pp-y', 'Lift Y', fmt(p.pos[1]))}${field('pp-z', 'Z', fmt(p.pos[2]))}</div>
@@ -1393,85 +2054,98 @@ function openPartSheet(p) {
     <div class="row" style="margin-bottom:12px">
       <button class="btn sm" data-bool="subtract">Cut away…</button><button class="btn sm" data-bool="union">Join…</button><button class="btn sm" data-bool="intersect">Keep overlap…</button>
     </div>
+    </details>
     <div class="row">
       <button class="btn sm" id="pp-dup"><svg class="i"><use href="#i-copy"/></svg>Duplicate</button>
       <button class="btn sm" id="pp-stl"><svg class="i"><use href="#i-download"/></svg>STL</button>
       <button class="btn sm danger" id="pp-del"><svg class="i"><use href="#i-trash"/></svg>Delete</button>
     </div>`, { kind: 'part', id: p.id });
+  if (f) $('#pp-sketch').onclick = () => startFaceSketch(p, f);
+  $('#pp-more').addEventListener('toggle', (e) => { partMoreOpen = e.target.open; requestAnimationFrame(updateViewOffset); });
   const apply = () => {
     for (const [k] of params) { const v = num($('#pp-' + k).value); if (!(v > 0)) return toast('Sizes must be above 0.'); if (k === 'angle' && v > 360) return toast('Angle can be at most 360°.'); r[k] = v; }
     const x = num($('#pp-x').value), y = num($('#pp-y').value), z = num($('#pp-z').value); if (![x, y, z].every(Number.isFinite)) return toast('Enter numbers for the position.');
-    p.pos = [x, y, z]; buildPartMesh(p); commit(); refresh3DSelection(); openPartSheet(p);
+    p.pos = [x, y, z]; clearFace(); buildPartMesh(p); commit(); refresh3DSelection(); openPartSheet(p);
   };
-  sheet.querySelectorAll('input').forEach((el) => { onEnter(el, apply); el.addEventListener('change', apply); });
-  sheet.querySelectorAll('[data-rot]').forEach((b) => (b.onclick = () => { const a = +b.dataset.rot; p.rot[a] = (p.rot[a] + 90) % 360; applyTransform(p); dropToFloor(p, false); commit(); openPartSheet(p); }));
+  sheet.querySelectorAll('.fields input').forEach((el) => { onEnter(el, apply); el.addEventListener('change', apply); });
+  sheet.querySelectorAll('[data-rot]').forEach((b) => (b.onclick = () => { const a = +b.dataset.rot; p.rot[a] = (p.rot[a] + 90) % 360; clearFace(); applyTransform(p); dropToFloor(p, false); commit(); openPartSheet(p); }));
   sheet.querySelectorAll('[data-color]').forEach((b) => (b.onclick = () => { p.color = b.dataset.color; p.mesh.material.color.set(p.color); T.dirty = true; commit(); openPartSheet(p); }));
-  sheet.querySelectorAll('[data-bool]').forEach((b) => (b.onclick = () => { pickMode = { op: b.dataset.bool, a: p }; closeSheet(); const verbs = { subtract: 'cut away from', union: 'join to', intersect: 'overlap with' }; toast(`Tap the part to ${verbs[pickMode.op]} ${p.name}`, { label: 'Cancel', fn: () => { pickMode = null; } }, 15000); }));
-  $('#pp-floor').onclick = () => { dropToFloor(p, true); openPartSheet(p); };
+  sheet.querySelectorAll('[data-bool]').forEach((b) => (b.onclick = () => { pickMode = { op: b.dataset.bool, a: p }; clearFace(); closeSheet(); const verbs = { subtract: 'cut away from', union: 'join to', intersect: 'overlap with' }; toast(`Tap the part to ${verbs[pickMode.op]} ${p.name}`, [{ label: 'Cancel', fn: () => { pickMode = null; } }], 15000); }));
+  $('#pp-floor').onclick = () => { clearFace(); dropToFloor(p, true); openPartSheet(p); };
   $('#pp-dup').onclick = () => { const s2 = partSize(p); const cp = addPart({ ...partData(p), id: uid(), name: p.name + ' copy', recipe: JSON.parse(JSON.stringify(p.recipe)), pos: [p.pos[0] + s2.x + 5, p.pos[1], p.pos[2]], rot: p.rot.slice() }); commit(); refresh3DSelection(); openPartSheet(cp); };
-  $('#pp-del').onclick = () => { T.parts.remove(p.mesh); doc.parts = doc.parts.filter((q) => q !== p); sel3 = null; commit(); closeSheet(); T.dirty = true; toast(`Deleted ${p.name}`, { label: 'Undo', fn: undo }); };
+  $('#pp-del').onclick = () => { clearFace(); removePart(p); sel3 = null; commit(); closeSheet(); T.dirty = true; toast(`Deleted ${p.name}`, [{ label: 'Undo', fn: undo }]); };
   $('#pp-stl').onclick = () => exportModel('stl', [p]);
 }
 function dropToFloor(p, doCommit) { const b = new THREE.Box3().setFromObject(p.mesh); p.pos[1] -= b.min.y; applyTransform(p); if (doCommit) commit(); }
 
 function setupPicking(cv) {
   const ray = new THREE.Raycaster(); const ndc = new THREE.Vector2(); let down = null; let drag = null;
-  const hitAt = (e) => { const r = cv.getBoundingClientRect(); ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); ray.setFromCamera(ndc, T.camera); const hits = ray.intersectObjects(T.parts.children, false); return hits[0] || null; };
+  const setRay = (e) => { const r = cv.getBoundingClientRect(); ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); ray.setFromCamera(ndc, T.camera); };
+  const hitAt = (e) => { setRay(e); return ray.intersectObjects(T.parts.children, false)[0] || null; };
   cv.addEventListener('pointerdown', (e) => {
-    closeMenu(); down = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId };
+    closeMenu(); down = { x: e.clientX, y: e.clientY, t: performance.now() };
     if (!e.isPrimary || pickMode) return;
     const h = hitAt(e);
     if (h && sel3 && h.object.userData.part === sel3) {
-      T.controls.enabled = false; const p = sel3;
-      const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -h.point.y); const start = h.point.clone(); const pos0 = p.pos.slice();
-      drag = { p, plane, start, pos0, moved: false };
+      T.controls.enabled = false;
+      drag = { p: sel3, plane: new THREE.Plane(new THREE.Vector3(0, 1, 0), -h.point.y), start: h.point.clone(), pos0: sel3.pos.slice(), moved: false, sx: e.clientX, sy: e.clientY };
     }
   }, { capture: true });
   cv.addEventListener('pointermove', (e) => {
     if (!drag) return; if (!e.isPrimary) { cancelDrag(); return; }
-    const r = cv.getBoundingClientRect(); ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); ray.setFromCamera(ndc, T.camera);
-    const pt = new THREE.Vector3(); if (!ray.ray.intersectPlane(drag.plane, pt)) return;
-    const d = pt.sub(drag.start); const step = 1;
-    drag.p.pos = [Math.round((drag.pos0[0] + d.x) / step) * step, drag.pos0[1], Math.round((drag.pos0[2] + d.z) / step) * step];
-    drag.moved = true; applyTransform(drag.p);
+    if (!drag.moved && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 7) return;
+    setRay(e); const pt = new THREE.Vector3(); if (!ray.ray.intersectPlane(drag.plane, pt)) return;
+    const d = pt.sub(drag.start);
+    drag.p.pos = [Math.round(drag.pos0[0] + d.x), drag.pos0[1], Math.round(drag.pos0[2] + d.z)];
+    if (!drag.moved) clearFace(); drag.moved = true; applyTransform(drag.p);
   });
   const cancelDrag = () => { if (drag) { drag.p.pos = drag.pos0; applyTransform(drag.p); } drag = null; T.controls.enabled = true; };
   cv.addEventListener('pointerup', (e) => {
-    const wasDrag = drag && drag.moved; const dr = drag; drag = null; T.controls.enabled = true;
-    if (wasDrag) { commit(); openPartSheet(dr.p); return; }
+    const dr = drag; drag = null; T.controls.enabled = true;
+    if (dr && dr.moved) { commit(); openPartSheet(dr.p); return; }
     if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 7 || performance.now() - down.t > 500) return;
     const h = hitAt(e); const p = h ? h.object.userData.part : null;
     if (pickMode) {
-      if (!p) return toast('Tap a part, or Cancel.', { label: 'Cancel', fn: () => (pickMode = null) });
-      if (p === pickMode.a) return toast('Pick a different part.', { label: 'Cancel', fn: () => (pickMode = null) });
+      if (!p) return toast('Tap a part, or Cancel.', [{ label: 'Cancel', fn: () => (pickMode = null) }]);
+      if (p === pickMode.a) return toast('Pick a different part.', [{ label: 'Cancel', fn: () => (pickMode = null) }]);
       const pm = pickMode; pickMode = null; hideToast(); runBoolean(pm.op, pm.a, p); return;
     }
-    if (p) openPartSheet(p); else { sel3 = null; refresh3DSelection(); closeSheet(); }
+    if (!p) { sel3 = null; clearFace(); refresh3DSelection(); closeSheet(); return; }
+    if (p === sel3) {
+      const f = computeFace(h);
+      if (f && f.curved) { clearFace(); toast('That face is curved. Pick a flat face to sketch on.'); }
+      else if (f) { showFace(f); buzz(8); }
+    } else clearFace();
+    openPartSheet(p);
   });
   cv.addEventListener('pointercancel', cancelDrag);
 }
 let CSG = null;
-async function runBoolean(op, a, b) {
-  toast('Combining…', null, 20000);
+function brushGeom(g) { let b = g.clone(); b.deleteAttribute('uv'); b.deleteAttribute('normal'); b = mergeVertices(b, 1e-4); b.computeVertexNormals(); b.clearGroups(); return b; }
+async function csgApply(partA, geomBWorld, op, name) {
   try {
     if (!CSG) CSG = await import('three-bvh-csg');
-    const brush = (p) => {
-      let g = p.mesh.geometry.clone(); g.deleteAttribute('uv'); g.deleteAttribute('normal'); g = mergeVertices(g, 1e-4); g.computeVertexNormals(); g.clearGroups();
-      const br = new CSG.Brush(g); br.position.copy(p.mesh.position); br.rotation.copy(p.mesh.rotation); br.updateMatrixWorld(true); return br;
-    };
+    const a = new CSG.Brush(brushGeom(partA.mesh.geometry)); a.position.copy(partA.mesh.position); a.rotation.copy(partA.mesh.rotation); a.updateMatrixWorld(true);
+    const b = new CSG.Brush(brushGeom(geomBWorld)); b.updateMatrixWorld(true);
     const ev = new CSG.Evaluator(); ev.attributes = ['position', 'normal']; ev.useGroups = false;
-    const opc = { subtract: CSG.SUBTRACTION, union: CSG.ADDITION, intersect: CSG.INTERSECTION }[op];
-    const res = ev.evaluate(brush(a), brush(b), opc);
-    let g = res.geometry.index ? res.geometry.toNonIndexed() : res.geometry;
-    const pos = g.getAttribute('position'); if (!pos || pos.count < 3) { toast('Nothing is left. The parts don’t overlap that way.'); return; }
+    const res = ev.evaluate(a, b, { subtract: CSG.SUBTRACTION, union: CSG.ADDITION, intersect: CSG.INTERSECTION }[op]);
+    const g = res.geometry.index ? res.geometry.toNonIndexed() : res.geometry;
+    const pos = g.getAttribute('position'); if (!pos || pos.count < 3) { toast('Nothing is left. The shapes don’t overlap that way.'); return null; }
     g.computeBoundingBox(); const bb = g.boundingBox; const c = new THREE.Vector3((bb.min.x + bb.max.x) / 2, bb.min.y, (bb.min.z + bb.max.z) / 2);
     g.translate(-c.x, -c.y, -c.z);
     const arr = new Float32Array(g.getAttribute('position').array);
-    const sym = { subtract: '−', union: '+', intersect: '∩' }[op];
-    [a, b].forEach((p) => { T.parts.remove(p.mesh); }); doc.parts = doc.parts.filter((p) => p !== a && p !== b);
-    const p = addPart({ name: `${a.name} ${sym} ${b.name}`.slice(0, 48), color: a.color, recipe: { kind: 'mesh', pos: b64FromF32(arr) }, pos: [c.x, c.y, c.z] });
-    commit(); refresh3DSelection(); openPartSheet(p); toast('Combined', { label: 'Undo', fn: undo });
-  } catch (err) { console.error(err); toast('Could not combine those parts. Try moving them so they overlap more.'); }
+    const color = partA.color; removePart(partA);
+    const p = addPart({ name, color, recipe: { kind: 'mesh', pos: b64FromF32(arr) }, pos: [c.x, c.y, c.z] });
+    hideToast(); return p;
+  } catch (err) { console.error(err); toast('Could not combine those shapes. Try moving them so they overlap more.'); return null; }
+}
+async function runBoolean(op, a, b) {
+  toast('Combining…', null, 20000);
+  const gB = b.mesh.geometry.clone(); b.mesh.updateMatrixWorld(true); gB.applyMatrix4(b.mesh.matrixWorld);
+  const sym = { subtract: '−', union: '+', intersect: '∩' }[op];
+  const p = await csgApply(a, gB, op, `${a.name} ${sym} ${b.name}`.slice(0, 48)); gB.dispose();
+  if (!p) return;
+  removePart(b); commit(); refresh3DSelection(); openPartSheet(p); toast('Combined', [{ label: 'Undo', fn: undo }]);
 }
 
 /* =========================================================================
@@ -1479,14 +2153,13 @@ async function runBoolean(op, a, b) {
    ========================================================================= */
 function collectTris(list) {
   const tris = []; const va = new THREE.Vector3(), vb = new THREE.Vector3(), vc = new THREE.Vector3();
-  const zUp = (v) => [v.x, -v.z, v.y]; // three.js Y-up -> printer Z-up
+  const zUp = (v) => [v.x, -v.z, v.y];
   for (const p of list) {
     if (!p.mesh) continue; p.mesh.updateMatrixWorld(true);
     const g = p.mesh.geometry, pos = g.getAttribute('position'), idx = g.index, mw = p.mesh.matrixWorld;
     const n = idx ? idx.count : pos.count;
     for (let i = 0; i < n; i += 3) {
-      const ia = idx ? idx.getX(i) : i, ib = idx ? idx.getX(i + 1) : i + 1, ic = idx ? idx.getX(i + 2) : i + 2;
-      va.fromBufferAttribute(pos, ia).applyMatrix4(mw); vb.fromBufferAttribute(pos, ib).applyMatrix4(mw); vc.fromBufferAttribute(pos, ic).applyMatrix4(mw);
+      va.fromBufferAttribute(pos, idx ? idx.getX(i) : i).applyMatrix4(mw); vb.fromBufferAttribute(pos, idx ? idx.getX(i + 1) : i + 1).applyMatrix4(mw); vc.fromBufferAttribute(pos, idx ? idx.getX(i + 2) : i + 2).applyMatrix4(mw);
       tris.push([zUp(va), zUp(vb), zUp(vc)]);
     }
   }
@@ -1508,8 +2181,7 @@ function toOBJ(list) {
   let out = '# Napkin CAD export, units: mm\n', vi = 1;
   for (const p of list) {
     out += `o ${p.name.replace(/\s+/g, '_')}\n`;
-    const tris = collectTris([p]);
-    for (const t of tris) { for (const v of t) out += `v ${v[0].toFixed(4)} ${v[1].toFixed(4)} ${v[2].toFixed(4)}\n`; out += `f ${vi} ${vi + 1} ${vi + 2}\n`; vi += 3; }
+    for (const t of collectTris([p])) { for (const v of t) out += `v ${v[0].toFixed(4)} ${v[1].toFixed(4)} ${v[2].toFixed(4)}\n`; out += `f ${vi} ${vi + 1} ${vi + 2}\n`; vi += 3; }
   }
   return out;
 }
@@ -1519,13 +2191,12 @@ async function exportModel(kind, list = doc.parts) {
   const base = (list.length === 1 ? list[0].name : 'napkin-model').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase() || 'model';
   if (kind === 'stl') await saveFile(base + '.stl', toSTL(list)); else await saveFile(base + '.obj', toOBJ(list));
 }
-// Minimal store-only ZIP, used where a host accepts .zip but not .stl.
 const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
 function crc32(u8) { let c = 0xffffffff; for (let i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; }
 function zipOne(name, data) {
   const nm = new TextEncoder().encode(name), crc = crc32(data), sz = data.length;
   const lh = new DataView(new ArrayBuffer(30)); lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(12, 0x21, true); lh.setUint32(14, crc, true); lh.setUint32(18, sz, true); lh.setUint32(22, sz, true); lh.setUint16(26, nm.length, true);
-  const cd = new DataView(new ArrayBuffer(46)); cd.setUint32(0, 0x02014b50, true); cd.setUint16(4, 20, true); cd.setUint16(6, 20, true); cd.setUint16(14, 0x21, true); cd.setUint32(16, crc, true); cd.setUint32(20, sz, true); cd.setUint32(24, sz, true); cd.setUint16(28, nm.length, true); cd.setUint32(42, 0, true);
+  const cd = new DataView(new ArrayBuffer(46)); cd.setUint32(0, 0x02014b50, true); cd.setUint16(4, 20, true); cd.setUint16(6, 20, true); cd.setUint16(14, 0x21, true); cd.setUint32(16, crc, true); cd.setUint32(20, sz, true); cd.setUint32(24, sz, true); cd.setUint16(28, nm.length, true);
   const cdOff = 30 + nm.length + sz, cdLen = 46 + nm.length;
   const end = new DataView(new ArrayBuffer(22)); end.setUint32(0, 0x06054b50, true); end.setUint16(8, 1, true); end.setUint16(10, 1, true); end.setUint32(12, cdLen, true); end.setUint32(16, cdOff, true);
   return new Blob([lh.buffer, nm, data, cd.buffer, nm, end.buffer]);
@@ -1552,7 +2223,7 @@ async function saveFile(name, data) {
 }
 
 /* =========================================================================
-   UI wiring: modes, toolbar, menu, toast, hints, photo underlay
+   UI wiring: modes, toolbar, status, menu, toast, hints, photo underlay
    ========================================================================= */
 let mode = 'sketch';
 function setMode(m) {
@@ -1560,63 +2231,70 @@ function setMode(m) {
   $('#mode-sketch').setAttribute('aria-pressed', !is3); $('#mode-3d').setAttribute('aria-pressed', is3);
   $('#sketch').hidden = is3; $('#view3d').hidden = !is3; $('#tb-sketch').hidden = is3; $('#tb-3d').hidden = !is3;
   $('#sketch-side').hidden = is3; $('#views3d').hidden = !is3;
-  closeSheet(); pickMode = null;
+  closeSheet(); pickMode = null; guide.active = false;
   if (is3) { init3D(); resize3D(); refresh3DSelection(); } else resizeSketch();
-  updateHint(); updateFab();
+  updateStatus(); updateFaceChip(); updateFab();
+  showHint(is3 ? (doc.parts.length ? '<b>Tap</b> a part to select it, then tap a flat face to sketch on it. Drag a selected part to move it.' : 'No parts yet. Add a box, or sketch an outline and tap <b>Review</b>.') : HINTS[tool]);
 }
-function updateFab() { $('#btn-make3d').hidden = mode !== 'sketch' || sheet.classList.contains('open') || !shapes().length; }
+function updateFab() { const b = $('#btn-review'); b.hidden = mode !== 'sketch' || sheet.classList.contains('open') || !shapes().length; }
 const HINTS = {
-  draw: '<b>Draw</b> with your finger. Lines snap straight and outlines close where you started. Two fingers pan and zoom.',
-  dim: '<b>Write a number</b> next to a line or circle, or tap the line to type it. The first one sets the scale.',
+  draw: '<b>Draw</b> shapes, <b>write numbers</b> beside edges, <b>tap</b> an edge to type a size, <b>scribble</b> to delete. Two-finger tap = undo.',
+  dim: '<b>Write a number</b> next to a line, tap a line to type it, or <b>drag from a hole to an edge</b> to set its distance.',
   select: '<b>Tap</b> a point, edge or shape to edit it. Drag to move. Drag empty paper to pan.',
   line: '<b>Drag</b> to draw a straight line. Ends join up; close the loop to make an outline.',
   rect: '<b>Drag</b> from corner to corner. Snaps to the grid.',
   circle: '<b>Drag</b> from the center outward.',
   erase: '<b>Tap or swipe</b> over a shape to delete it.',
 };
-function updateHint() {
-  const h = $('#hint'); const chip = $('#scale-chip');
-  if (mode === '3d') { $('#hint-text').innerHTML = doc.parts.length ? '<b>Tap</b> a part to edit it, then drag it to move. One finger orbits, two fingers zoom and pan.' : 'No parts yet. Add a box, or sketch an outline and tap <b>Make 3D</b>.'; chip.hidden = true; return; }
-  $('#hint-text').innerHTML = HINTS[tool];
-  const unscaled = shapes().length && !sketchCalibrated();
-  chip.hidden = !unscaled; chip.className = 'chip warn'; chip.textContent = 'NOT TO SCALE';
-  h.hidden = false;
+let hintT = 0;
+function showHint(html, ms = 5500) { const p = $('#hint-text'); p.innerHTML = html; p.hidden = sheet.classList.contains('open'); clearTimeout(hintT); hintT = setTimeout(() => { p.hidden = true; }, ms); }
+let flashT = 0;
+function flash(text) { const p = $('#hint-text'); p.innerHTML = `<b>${esc(text)}</b>`; p.hidden = sheet.classList.contains('open'); clearTimeout(hintT); hintT = setTimeout(() => { p.hidden = true; }, 1400); }
+function updateStatus() {
+  const chip = $('#status-chip');
+  if (mode !== 'sketch' || !shapes().length) { chip.hidden = true; return; }
+  const A = analyzeSketch(); chip.hidden = false;
+  const [cls, text] = {
+    full: ['ok', 'FULLY DEFINED'], under: ['warn', A.need ? `NEEDS ${A.need} DIM${A.need === 1 ? '' : 'S'}` : 'FREEFORM'], unscaled: ['warn', 'NOT TO SCALE'],
+    over: ['bad', 'OVER-DEFINED'], empty: ['', 'OPEN SKETCH'],
+  }[A.status];
+  chip.className = 'chip ' + cls; $('#status-text').textContent = text;
 }
 function setTool(t) {
   tool = t; document.querySelectorAll('#tb-sketch [data-tool]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.tool === t));
-  if (t !== 'select') { sel = null; if (sheetFor && sheetFor.kind !== 'make3d') closeSheet(); }
-  if (live.handwriting.length) processInk();
-  updateHint(); render();
+  if (t !== 'select') { sel = null; if (sheetFor && !['review', 'number'].includes(sheetFor.kind)) closeSheet(); }
+  flushInk(); showHint(HINTS[t]); render();
 }
 document.querySelectorAll('#tb-sketch [data-tool]').forEach((b) => (b.onclick = () => setTool(b.dataset.tool)));
 document.querySelectorAll('#tb-3d [data-add]').forEach((b) => (b.onclick = () => addPrimitive(b.dataset.add)));
 $('#mode-sketch').onclick = () => setMode('sketch'); $('#mode-3d').onclick = () => setMode('3d');
 $('#btn-to-sketch').onclick = () => setMode('sketch');
 $('#btn-stl').onclick = () => exportModel('stl');
-$('#btn-make3d').onclick = openMake3D;
+$('#btn-review').onclick = () => { flushInk(); openReview(); };
+$('#status-chip').onclick = () => { flushInk(); openReview(); };
+$('#face-chip').onclick = () => exitFaceSketch();
 $('#btn-undo').onclick = undo; $('#btn-redo').onclick = redo;
 $('#btn-fit').onclick = () => { fitSketch(); render(); persist(); };
-$('#btn-clear').onclick = () => { if (!shapes().length) return; doc.sketch.shapes = []; sel = null; closeSheet(); commit(); render(); updateHint(); toast('Sketch cleared', { label: 'Undo', fn: undo }); };
+$('#btn-clear').onclick = () => { if (!shapes().length) return; doc.sketch.shapes = []; sel = null; closeSheet(); commit(); render(); toast('Sketch cleared', [{ label: 'Undo', fn: undo }]); };
 $('#views3d').addEventListener('click', (e) => { const b = e.target.closest('[data-view]'); if (b) setView(b.dataset.view); });
 
 function fitSketch() {
-  const all = shapes().flatMap((s) => (s.type === 'circle' ? [V.sub(s.c, [s.r, s.r]), V.add(s.c, [s.r, s.r])] : s.pts));
+  const all = shapes().flatMap((s) => (s.type === 'circle' ? [V.sub(s.c, [s.r, s.r]), V.add(s.c, [s.r, s.r])] : s.pts)).concat(refs().flatMap((r) => r.pts));
   if (!all.length) { view = { cx: 0, cy: 0, s: 4 }; return; }
-  const b = bbox(all); view.cx = (b.x0 + b.x1) / 2; view.cy = (b.y0 + b.y1) / 2 - 8 / view.s;
-  view.s = clamp(Math.min((sk.W - 110) / Math.max(b.w, 1), (sk.H - 200) / Math.max(b.h, 1)), 0.05, 400);
+  const b = bbox(all); view.s = clamp(Math.min((sk.W - 110) / Math.max(b.w, 1), (sk.H - 200) / Math.max(b.h, 1)), 0.05, 400);
+  view.cx = (b.x0 + b.x1) / 2; view.cy = (b.y0 + b.y1) / 2 - 8 / view.s;
 }
 
-// Menu
 const menu = $('#menu');
 function closeMenu() { menu.hidden = true; }
 $('#btn-menu').onclick = (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; };
 document.addEventListener('pointerdown', (e) => { if (!menu.hidden && !e.target.closest('#menu') && !e.target.closest('#btn-menu')) closeMenu(); });
-menu.addEventListener('click', async (e) => {
+menu.addEventListener('click', (e) => {
   const b = e.target.closest('[data-act]'); if (!b) return; closeMenu();
   const act = b.dataset.act;
-  if (act === 'new') { doc.sketch.shapes = []; clearParts(); sel = null; sel3 = null; clearUnderlay(); view = { cx: 0, cy: 0, s: 4 }; commit(); setMode('sketch'); setTool('draw'); toast('New project', { label: 'Undo', fn: undo }); }
+  if (act === 'new') { doc.sketch = newSketch(); doc.stash = null; clearParts(); sel = null; sel3 = null; clearFace(); clearUnderlay(); view = { cx: 0, cy: 0, s: 4 }; commit(); setMode('sketch'); setTool('draw'); toast('New project', [{ label: 'Undo', fn: undo }]); }
   if (act === 'example') { loadExample(); commit(); }
-  if (act === 'save') saveFile('napkin-project.json', JSON.stringify({ app: 'napkin-cad', version: 1, ...JSON.parse(serialize()) }, null, 1));
+  if (act === 'save') saveFile('napkin-project.json', JSON.stringify({ app: 'napkin-cad', version: 2, ...JSON.parse(serialize()) }, null, 1));
   if (act === 'open') $('#file-open').click();
   if (act === 'stl') exportModel('stl');
   if (act === 'obj') exportModel('obj');
@@ -1624,32 +2302,39 @@ menu.addEventListener('click', async (e) => {
 });
 $('#file-open').onchange = async (e) => {
   const f = e.target.files[0]; e.target.value = ''; if (!f) return;
-  try { const d = JSON.parse(await f.text()); if (!d.sketch || !Array.isArray(d.parts)) throw new Error(); hist.undo.push(hist.cur); hist.cur = JSON.stringify({ sketch: d.sketch, parts: d.parts }); restore(hist.cur); fitSketch(); render(); toast(`Opened ${f.name}`); }
+  try { const d = JSON.parse(await f.text()); if (!d.sketch || !Array.isArray(d.parts)) throw new Error(); hist.undo.push(hist.cur); hist.cur = JSON.stringify({ sketch: d.sketch, stash: d.stash || null, parts: d.parts }); restore(hist.cur); fitSketch(); render(); toast(`Opened ${f.name}`); }
   catch { toast('That file isn’t a Napkin CAD project.'); }
 };
 function showHelp() {
-  openSheet(`<div class="head"><div><h2>From napkin to part</h2><div class="sub">Sketch → dimension → 3D → print</div></div><button class="iconbtn" data-close aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button></div>
+  openSheet(`<div class="head"><div><h2>From napkin to part</h2><div class="sub">Draw → dimension → review → 3D → sketch on faces</div></div>${closeBtn}</div>
   <div class="help"><ol>
-    <li><b>Draw</b> the outline with your finger. Wobbly lines straighten and snap to 90° and 45°. Finish where you started to close it. Draw circles inside for holes.</li>
-    <li>Switch to <b>Dimension</b> and write the size next to an edge, e.g. <kbd>80</kbd>. The first number scales the whole sketch to real millimetres; later ones reshape it while keeping the angles.</li>
-    <li>If a number is misread, tap <b>Fix</b> and type it. The app learns your handwriting.</li>
-    <li>Tap <b>Make 3D</b>: <b>Extrude</b> gives the outline a thickness, <b>Revolve</b> spins a half-profile into a round part.</li>
-    <li>In <b>3D</b>, add boxes or cylinders, drag them into place, then <b>Cut away</b> or <b>Join</b>. Export <b>STL</b> for a 3D printer.</li>
+    <li><b>Draw</b> with your finger. Wobbly lines straighten and snap to 90° and 45°; end where you started to close an outline. Circles inside become holes.</li>
+    <li><b>Write a number</b> right next to an edge, e.g. <b>80</b>. The first number scales the whole sketch; later ones reshape it. Or just <b>tap</b> an edge or circle and write or type the size.</li>
+    <li>Watch the status chip. <b>Amber</b> edges still need a size; grey numbers in brackets are worked out from your other sizes.</li>
+    <li>For holes, the app asks for two distances from the outline's edges. In Dimension mode you can also <b>drag from a hole to an edge</b>.</li>
+    <li>Tap <b>Review</b>: you see a 3D preview and what is missing. <b>Add missing dimensions</b> walks you through each one; <b>Confirm</b> builds the part.</li>
+    <li>In 3D, tap a part, then tap one of its <b>flat faces</b> and choose <b>Sketch on this face</b>. Draw on it, review, then <b>Add material</b> or <b>Cut</b>.</li>
   </ol>
-  <p class="note">Tip: tap <b>Photo</b> to put a picture of a paper sketch under the grid and trace over it. With a stylus, your finger pans and the pen draws.</p></div>`, { kind: 'help' });
+  <h3>Gestures</h3>
+  <ul>
+    <li><b>Scribble</b> back and forth over a shape or a dimension to delete it.</li>
+    <li><b>Two-finger tap</b>: undo. <b>Three-finger tap</b>: redo.</li>
+    <li><b>Pinch</b> to zoom, two fingers to pan. With a stylus, the pen draws and your finger pans.</li>
+    <li>If a number is read wrong, tap <b>Fix</b>. The app learns your handwriting. <b>Not a number</b> turns it back into lines.</li>
+  </ul></div>`, { kind: 'help' });
 }
 
-// Toast
 let toastT = 0;
-function toast(msg, action, ms = 3600) {
-  const t = $('#toast'); $('#toast-text').textContent = msg; const b = $('#toast-btn');
-  if (action) { b.hidden = false; b.textContent = action.label; b.onclick = () => { hideToast(); action.fn(); }; } else b.hidden = true;
-  t.hidden = false; t.style.bottom = sheet.classList.contains('open') ? `${sheet.offsetHeight + 12}px` : '';
-  clearTimeout(toastT); toastT = setTimeout(hideToast, action ? Math.max(ms, 5000) : ms);
+function toast(msg, actions, ms = 3600) {
+  const t = $('#toast'); $('#toast-text').textContent = msg; const box = $('#toast-acts'); box.innerHTML = '';
+  const list = !actions ? [] : Array.isArray(actions) ? actions : [actions];
+  list.forEach((a) => { const b = document.createElement('button'); b.textContent = a.label; b.onclick = () => { hideToast(); a.fn(); }; box.appendChild(b); });
+  t.hidden = false; placeToast();
+  clearTimeout(toastT); toastT = setTimeout(hideToast, list.length ? Math.max(ms, 5000) : ms);
 }
 function hideToast() { $('#toast').hidden = true; }
+function placeToast() { $('#toast').style.bottom = sheet.classList.contains('open') ? `${sheet.offsetHeight + 12}px` : ''; }
 
-// Photo underlay (trace a paper sketch)
 $('#btn-photo').onclick = () => { if (underlay) openUnderlaySheet(); else $('#file-photo').click(); };
 $('#file-photo').onchange = (e) => {
   const f = e.target.files[0]; e.target.value = ''; if (!f) return;
@@ -1657,12 +2342,11 @@ $('#file-photo').onchange = (e) => {
   rd.onload = () => {
     const img = new Image();
     img.onload = () => {
-      // downscale for storage
-      const maxD = 1600, k = Math.min(1, maxD / Math.max(img.width, img.height)); const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      const k = Math.min(1, 1600 / Math.max(img.width, img.height)); const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
       c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); const src = c.toDataURL('image/jpeg', 0.82);
       const vw = (sk.W * 0.9) / view.s; const vh = vw * (c.height / c.width); const ctr = toW([sk.W / 2, sk.H / 2]);
       underlay = { src, x: ctr[0] - vw / 2, y: ctr[1] - vh / 2, w: vw, h: vh, opacity: 0.5 };
-      loadUnderlayImg(); saveUnderlay(); setTool('draw'); toast('Photo placed. Trace over it with Draw.', { label: 'Adjust', fn: openUnderlaySheet });
+      loadUnderlayImg(); saveUnderlay(); setTool('draw'); toast('Photo placed. Trace over it with Draw.', [{ label: 'Adjust', fn: openUnderlaySheet }]);
     };
     img.src = rd.result;
   };
@@ -1672,7 +2356,7 @@ function loadUnderlayImg() { if (!underlay) { underlayImg = null; return; } cons
 function saveUnderlay() { if (underlay) { if (!store.set('napkin.underlay.v1', JSON.stringify(underlay))) store.del('napkin.underlay.v1'); } else store.del('napkin.underlay.v1'); }
 function clearUnderlay() { underlay = null; underlayImg = null; saveUnderlay(); render(); }
 function openUnderlaySheet() {
-  openSheet(`<div class="head"><div><h2>Photo underlay</h2><div class="sub">Trace over a paper sketch</div></div><button class="iconbtn" data-close aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button></div>
+  openSheet(`<div class="head"><div><h2>Photo underlay</h2><div class="sub">Trace over a paper sketch</div></div>${closeBtn}</div>
     <div class="field" style="margin-bottom:12px"><label for="u-op">Opacity</label><input type="range" id="u-op" min="0.1" max="1" step="0.05" value="${underlay.opacity}"></div>
     <div class="field" style="margin-bottom:14px"><label for="u-sc">Size</label><input type="range" id="u-sc" min="-1" max="1" step="0.01" value="0"></div>
     <div class="row"><button class="btn" id="u-new"><svg class="i"><use href="#i-image"/></svg>Replace photo</button><button class="btn danger" id="u-del"><svg class="i"><use href="#i-trash"/></svg>Remove photo</button></div>`, { kind: 'underlay' });
@@ -1683,28 +2367,27 @@ function openUnderlaySheet() {
   $('#u-del').onclick = () => { clearUnderlay(); closeSheet(); };
 }
 
-// Keyboard (desktop / tablets with keyboards)
 document.addEventListener('keydown', (e) => {
   if (e.target.matches('input')) return;
   const k = e.key.toLowerCase();
   if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
   else if ((e.ctrlKey || e.metaKey) && k === 'y') { e.preventDefault(); redo(); }
-  else if (e.key === 'Escape') { closeSheet(); closeMenu(); sel = null; render(); }
+  else if (e.key === 'Escape') { guide.active = false; closeSheet(); closeMenu(); sel = null; render(); }
   else if (mode === 'sketch' && !e.ctrlKey && !e.metaKey) { const map = { d: 'draw', m: 'dim', s: 'select', l: 'line', r: 'rect', c: 'circle', e: 'erase' }; if (map[k]) setTool(map[k]); }
 });
 
-/* Example: an L-bracket with two mounting holes */
+/* Example: an L-bracket with two mounting holes, fully dimensioned */
 function loadExample() {
-  doc.sketch.shapes = [
-    { id: uid(), type: 'poly', closed: true, pts: [[0, 0], [80, 0], [80, 16], [16, 16], [16, 50], [0, 50]], dims: { 0: 80, 1: 16, 5: 50 } },
-    { id: uid(), type: 'circle', c: [8, 40], r: 3, dim: 6, dims: {} },
-    { id: uid(), type: 'circle', c: [66, 8], r: 3, dim: 6, dims: {} },
-  ];
-  clearParts();
+  const outline = { id: uid(), type: 'poly', closed: true, pts: [[0, 0], [80, 0], [80, 16], [16, 16], [16, 50], [0, 50]], dims: { 0: 80, 1: 16, 4: 16, 5: 50 }, angs: {}, locs: [] };
+  const h1 = { id: uid(), type: 'circle', c: [8, 40], r: 3, dim: 6, dims: {}, angs: {}, locs: [] };
+  const h2 = { id: uid(), type: 'circle', c: [66, 8], r: 3, dim: 6, dims: {}, angs: {}, locs: [] };
+  doc.sketch = { shapes: [outline, h1, h2], plane: null, refs: [] }; doc.stash = null;
+  h1.locs = [makeLoc(h1, { id: outline.id, i: 5 }), makeLoc(h1, { id: outline.id, i: 4 })];
+  h2.locs = [makeLoc(h2, { id: outline.id, i: 1 }), makeLoc(h2, { id: outline.id, i: 0 })];
+  clearParts(); clearFace();
   const regions = buildRegions(); const c = regionsCenter(regions);
-  const recipe = { kind: 'extrude', depth: 6, regions: regions.map((r) => ({ outer: shapeRecipe(r.sh, c), holes: r.holes.map((h) => shapeRecipe(h.sh, c)) })) };
-  addPart({ name: 'Example bracket', recipe, pos: [0, 0, 0] }, false);
-  sel = null; sel3 = null; closeSheet(); fitSketch(); render(); updateHint(); updateFab();
+  addPart({ name: 'Example bracket', recipe: { kind: 'extrude', depth: 6, regions: regions.map((r) => ({ outer: shapeRecipe(r.sh, c), holes: r.holes.map((h) => shapeRecipe(h.sh, c)) })) }, pos: [0, 0, 0] }, false);
+  sel = null; sel3 = null; closeSheet(); fitSketch(); render(); updateStatus(); updateFab(); updateFaceChip();
   if (T.ready) setView('iso');
 }
 
@@ -1712,24 +2395,22 @@ function loadExample() {
    Boot
    ========================================================================= */
 readTokens();
-const themeChanged = () => { readTokens(); render(); theme3D(); refresh3DSelection(); };
+const themeChanged = () => { readTokens(); render(); theme3D(); };
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', themeChanged);
 new MutationObserver(themeChanged).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] });
 new ResizeObserver(() => { if (mode === 'sketch') resizeSketch(); }).observe($('#stage'));
-let saved = null; try { saved = JSON.parse(store.get('napkin.doc.v1') || 'null'); } catch {}
+let saved = null; try { saved = JSON.parse(store.get('napkin.doc.v2') || store.get('napkin.doc.v1') || 'null'); } catch {}
 resizeSketch();
 if (saved && saved.doc) {
-  doc.sketch = saved.doc.sketch || { shapes: [] }; (saved.doc.parts || []).forEach((p) => addPart(p, false)); if (saved.view) view = saved.view;
-} else { loadExample(); }
+  loadDoc(saved.doc); shapes().forEach((s) => { s.dims = s.dims || {}; s.angs = s.angs || {}; s.locs = s.locs || []; }); if (saved.view) view = saved.view;
+} else loadExample();
 try { underlay = JSON.parse(store.get('napkin.underlay.v1') || 'null'); } catch { underlay = null; } loadUnderlayImg();
-hist.cur = serialize(); updateUndo(); updateHint(); updateFab(); render();
+hist.cur = serialize(); updateUndo(); updateStatus(); updateFab(); updateFaceChip(); render();
+showHint(HINTS.draw, 8000);
 if (!saved) setTimeout(() => toast('Example loaded. Tap ⋯ › New project to start your own.', null, 5000), 600);
 
-// Offline support when hosted as a standalone app
-if ('serviceWorker' in navigator && location.protocol.startsWith('http') && !window.claude && window.top === window.self) {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
-}
-window.__napkin = { doc, Digits, recognize, setEdgeDim, buildRegions, view: () => view, toS, toW, exportModel, toSTL, runBoolean, get parts() { return doc.parts; } };
+if ('serviceWorker' in navigator && location.protocol.startsWith('http') && !window.claude && window.top === window.self) navigator.serviceWorker.register('sw.js').catch(() => {});
+window.__napkin = { _T: T, THREE, doc, Digits, recognize, setEdgeDim, buildRegions, analyzeSketch, view: () => view, toS, toW, exportModel, toSTL, runBoolean, computeFace, startFaceSketch, featureFromSketch, openReview, get dimHits() { return dimHits; }, get parts() { return doc.parts; }, get sketch() { return doc.sketch; }, get selFace() { return selFace; }, project(v) { const r = $('#view3d').getBoundingClientRect(); const q = new THREE.Vector3(...v).project(T.camera); return [r.left + (q.x + 1) / 2 * r.width, r.top + (1 - q.y) / 2 * r.height]; } };
 </script>
 </body>
 </html>
