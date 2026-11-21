@@ -960,37 +960,170 @@ function snapOpen(poly) {
   return out;
 }
 function isRect(p) { for (let i = 0; i < 4; i++) { const a = turnAngle(p[(i + 3) % 4], p[i], p[(i + 1) % 4]); if (Math.abs(a - Math.PI / 2) > 0.05) return false; } return true; }
-function recognize(raw) {
-  const s = view.s; const pts = [];
-  for (const p of raw) if (!pts.length || V.dist(pts[pts.length - 1], p) > 1 / s) pts.push(p);
-  if (pts.length < 2) return null;
-  const L = pathLen(pts), bb = bbox(pts), D = Math.hypot(bb.w, bb.h);
-  if (L * s < 12) return null;
-  const gap = V.dist(pts[0], pts[pts.length - 1]);
-  const closed = gap < Math.max(0.2 * D, 18 / s) && L > 1.7 * D;
-  if (closed) {
-    const loop = resample(pts, 96, true);
-    const c = centroid(loop); const rs = loop.map((p) => V.dist(p, c));
-    const mr = rs.reduce((a, b) => a + b, 0) / rs.length; const cv = Math.sqrt(rs.reduce((a, r) => a + (r - mr) ** 2, 0) / rs.length) / mr;
-    const coarse = cleanVerts(rdp([...loop, loop[0]], 0.045 * D).slice(0, -1), true, 0.05 * D);
-    if (cv < 0.07 || (coarse.length >= 6 && cv < 0.16)) return { kind: 'Circle', shape: { type: 'circle', c, r: mr } };
-    if (coarse.length > 9) {
-      const fine = cleanVerts(rdp([...loop, loop[0]], 0.008 * D).slice(0, -1), true, 0.01 * D, 4);
-      return { kind: 'Curve', shape: { type: 'poly', closed: true, smooth: true, pts: fine } };
-    }
-    const snapped = snapClosed(coarse);
-    const kind = snapped.length === 3 ? 'Triangle' : snapped.length === 4 ? (isRect(snapped) ? 'Rectangle' : 'Quad') : `${snapped.length}-sided outline`;
-    return { kind, shape: { type: 'poly', closed: true, pts: snapped } };
+/* RECOGNIZER-START */
+function segIntersect(p1, p2, q1, q2) { const r = V.sub(p2, p1), d = V.cross(r, V.sub(q2, q1)); if (Math.abs(d) < 1e-12) return V.lerp(p1, p2, 0.5); const t = V.cross(V.sub(q1, p1), V.sub(q2, q1)) / d; return V.add(p1, V.mul(r, t)); }
+function lineIntersect(a, da, b, db) { const d = V.cross(da, db); if (Math.abs(d) < 1e-9) return null; return V.add(a, V.mul(da, V.cross(V.sub(b, a), db) / d)); }
+function fitLine(pts) {
+  const c = centroid(pts); let xx = 0, xy = 0, yy = 0; for (const p of pts) { const dx = p[0] - c[0], dy = p[1] - c[1]; xx += dx * dx; xy += dx * dy; yy += dy * dy; }
+  const ang = 0.5 * Math.atan2(2 * xy, xx - yy); const tr = xx + yy, det = xx * yy - xy * xy, disc = Math.sqrt(Math.max(0, (tr * tr) / 4 - det));
+  return { c, d: [Math.cos(ang), Math.sin(ang)], l1: tr / 2 + disc, l2: Math.max(tr / 2 - disc, 0) };
+}
+const diagOf = (pts) => { const b = bbox(pts); return Math.hypot(b.w, b.h); };
+const lineDist = (p, L) => Math.abs(V.cross(L.d, V.sub(p, L.c)));
+function cyc(p, a, b) { const out = []; for (let i = a; ; i = (i + 1) % p.length) { out.push(p[i]); if (i === b) break; } return out; }
+// Close a loop drawn with an overshoot, an undershoot, or a hook at either end. Returns the loop or null.
+function findLoop(rs) {
+  const n = rs.length; let best = null;
+  const a1 = Math.floor(n * 0.45), b0 = Math.floor(n * 0.55);
+  for (let i = 0; i < a1; i++) for (let j = Math.max(b0, i + 3); j < n - 1; j++) if (segsCross(rs[i], rs[i + 1], rs[j], rs[j + 1]) && (!best || j - i > best.j - best.i)) best = { i, j };
+  if (best) { const loop = [segIntersect(rs[best.i], rs[best.i + 1], rs[best.j], rs[best.j + 1]), ...rs.slice(best.i + 1, best.j + 1)]; if (pathLen(loop) > 1.6 * diagOf(loop)) return loop; }
+  let bj = n - 1, dj = V.dist(rs[n - 1], rs[0]);
+  for (let j = Math.floor(n * 0.6); j < n; j++) { const d = V.dist(rs[j], rs[0]); if (d < dj - 1e-9) { dj = d; bj = j; } }
+  let loop = rs.slice(0, bj + 1); const e = loop[loop.length - 1];
+  let bi = 0, di = V.dist(rs[0], e);
+  for (let i = 0; i < Math.floor(n * 0.4); i++) { const d = V.dist(rs[i], e); if (d < di - 1e-9) { di = d; bi = i; } }
+  loop = loop.slice(bi); const Dl = diagOf(loop);
+  if (loop.length > 8 && V.dist(loop[0], loop[loop.length - 1]) < Math.max(0.22 * Dl, 18 / view.s) && pathLen(loop) > 1.7 * Dl) return loop;
+  return null;
+}
+// ShortStraw corner finder: a corner is where the chord across a few samples gets short.
+function strawCorners(p, closed, W = 3) {
+  const n = p.length; if (n < 2 * W + 3) return { corners: [], med: 0 };
+  const straw = new Array(n).fill(Infinity);
+  for (let i = 0; i < n; i++) { if (!closed && (i < W || i >= n - W)) continue; straw[i] = V.dist(p[(i - W + n) % n], p[(i + W) % n]); }
+  const fin = straw.filter(Number.isFinite).sort((a, b) => a - b); const med = fin[fin.length >> 1]; const t = med * 0.955;
+  let s0 = 0; if (closed) { let mx = -1; for (let i = 0; i < n; i++) if (straw[i] > mx) { mx = straw[i]; s0 = i; } }
+  const corners = [];
+  for (let k = 0; k < n; k++) {
+    const i = (s0 + k) % n; if (!(straw[i] < t)) continue;
+    let m = i, kk = k; while (kk < n && straw[(s0 + kk) % n] < t) { const j = (s0 + kk) % n; if (straw[j] < straw[m]) m = j; kk++; }
+    corners.push({ i: m, sharp: straw[m] / med }); k = kk;
   }
-  const rs = resample(pts, 64);
-  const coarse = cleanVerts(rdp(rs, 0.045 * D), false, 0.04 * D);
-  if (coarse.length > 7) {
-    const fine = cleanVerts(rdp(resample(pts, 160), 0.006 * D), false, 0.008 * D, 3);
-    return { kind: 'Curve', shape: { type: 'poly', closed: false, smooth: true, pts: fine } };
+  return { corners, med };
+}
+// Fit straight sides between corners of a closed loop; vertices are where neighbouring sides meet.
+function polyFromCorners(p, ids0) {
+  const size = diagOf(p); let ids = [...new Set(ids0)].sort((a, b) => a - b);
+  let lines = null;
+  for (let guard = 0; guard < 20; guard++) {
+    const k = ids.length; if (k < 3) return null;
+    lines = ids.map((a, s) => { const seg = cyc(p, a, ids[(s + 1) % k]); const tr = Math.floor(seg.length * 0.18); const core = seg.length - 2 * tr >= 2 ? seg.slice(tr, seg.length - tr) : seg; return { ...fitLine(core), seg }; });
+    const par = lines.findIndex((B, s) => Math.abs(V.cross(lines[(s - 1 + k) % k].d, B.d)) < 0.28);
+    if (par >= 0) { ids.splice(par, 1); continue; }
+    let bent = -1, bentAt = -1, worst = 0;
+    lines.forEach((L, s) => { const a = L.seg[0], z = L.seg[L.seg.length - 1]; const ch = V.dist(a, z) || 1; L.seg.forEach((q, j) => { const dd = distToSeg(q, a, z), d = dd / ch; if (d > 0.1 && dd > 0.035 * size && d > worst && j > 2 && j < L.seg.length - 3) { worst = d; bent = s; bentAt = (ids[s] + j) % p.length; } }); });
+    if (bent >= 0) { if (guard > 8) return null; ids = [...ids, bentAt].sort((a, b) => a - b); continue; }
+    break;
   }
-  const snapped = snapOpen(coarse);
+  // a short bevel between two sides that turn a lot is a rounded corner: let the neighbours meet instead
+  for (let guard = 0; guard < 12; guard++) {
+    const k = lines.length; if (k < 3) return null;
+    const verts = lines.map((B, s) => { const A = lines[(s - 1 + k) % k]; return lineIntersect(A.c, A.d, B.c, B.d); });
+    if (verts.some((v) => !v)) return null;
+    const lens = verts.map((v, s) => V.dist(v, verts[(s + 1) % k]));
+    const bevel = k > 3 ? lens.findIndex((l, s) => l < 0.36 * Math.min(lens[(s - 1 + k) % k], lens[(s + 1) % k]) && Math.abs(V.cross(lines[(s - 1 + k) % k].d, lines[(s + 1) % k].d)) > 0.5) : -1;
+    if (bevel >= 0) { lines.splice(bevel, 1); continue; }
+    // tiny edges from a shaky hand
+    const tiny = k > 3 ? lens.findIndex((l) => l < 0.07 * size) : -1;
+    if (tiny >= 0) { lines.splice(tiny, 1); continue; }
+    // a joint that barely turns: one side
+    const flat = k > 3 ? verts.findIndex((v, s) => distToSeg(v, verts[(s - 1 + k) % k], verts[(s + 1) % k]) < 0.035 * size) : -1;
+    if (flat >= 0) { const A = lines[(flat - 1 + k) % k], B = lines[flat]; lines[(flat - 1 + k) % k] = { ...fitLine([...A.seg, ...B.seg]), seg: [...A.seg, ...B.seg] }; lines.splice(flat, 1); continue; }
+    return { verts, lines };
+  }
+  return null;
+}
+function rectFit(loop) {
+  let best = null;
+  for (let deg = 0; deg < 90; deg += 1) {
+    const a = (deg * Math.PI) / 180, ca = Math.cos(a), sa = Math.sin(a);
+    const r = loop.map((p) => [p[0] * ca + p[1] * sa, -p[0] * sa + p[1] * ca]); const b = bbox(r); const area = b.w * b.h;
+    if (!best || area < best.area) best = { a, b, area };
+  }
+  let a = best.a; const near = Math.round(a / (Math.PI / 2)) * (Math.PI / 2); if (Math.abs(a - near) < (7 * Math.PI) / 180) a = 0;
+  const ca = Math.cos(a), sa = Math.sin(a); const r = loop.map((p) => [p[0] * ca + p[1] * sa, -p[0] * sa + p[1] * ca]); const b = bbox(r);
+  const corners = [[b.x0, b.y0], [b.x1, b.y0], [b.x1, b.y1], [b.x0, b.y1]].map(([x, y]) => [x * ca - y * sa, x * sa + y * ca]);
+  const err = r.reduce((s, q) => s + Math.min(q[0] - b.x0, b.x1 - q[0], q[1] - b.y0, b.y1 - q[1]), 0) / r.length; // mean distance to the rectangle's sides
+  return { pts: corners, err, w: b.w, h: b.h };
+}
+function polyErr(loop, verts) {
+  const k = verts.length; return loop.reduce((s, q) => { let m = Infinity; for (let i = 0; i < k; i++) m = Math.min(m, distToSeg(q, verts[i], verts[(i + 1) % k])); return s + m; }, 0) / loop.length;
+}
+function smoothClosed(loop) { const D = diagOf(loop); return cleanVerts(rdp([...loop, loop[0]], 0.006 * D).slice(0, -1), true, 0.008 * D, 3); }
+function classifyClosed(loop0) {
+  const loop = resample(loop0, 120, true); const c = centroid(loop);
+  const rad = loop.map((p) => V.dist(p, c)); const mr = rad.reduce((a, b) => a + b, 0) / rad.length;
+  const circErr = rad.reduce((a, r) => a + Math.abs(r - mr), 0) / rad.length / mr;
+  const F = fitLine(loop); const aspect = Math.sqrt(F.l1 / Math.max(F.l2, 1e-9));
+  const { corners } = strawCorners(loop, true, 4);
+  const strong = corners.filter((q) => q.sharp < 0.8).length;
+  const R = rectFit(loop); const rectErr = R.err / mr;
+  const poly = corners.length >= 3 ? polyFromCorners(loop, corners.map((q) => q.i)) : null;
+  const pErr = poly ? polyErr(loop, poly.verts) / mr : Infinity;
+  const circleOk = aspect < 1.5 && circErr < 0.15 && (strong === 0 || circErr < 0.07) && circErr < rectErr * 0.9 && !(poly && poly.verts.length <= 6 && pErr < circErr * 0.55);
+  if (circleOk) return { kind: 'Circle', shape: { type: 'circle', c, r: mr } };
+  const nearRight = poly && poly.verts.length === 4 && poly.verts.every((v, i, a) => Math.abs(turnAngle(a[(i + 3) % 4], v, a[(i + 1) % 4]) - Math.PI / 2) < 0.32);
+  if (nearRight && rectErr < 0.09) { const pts = snapClosed(R.pts); return { kind: 'Rectangle', shape: { type: 'poly', closed: true, pts } }; }
+  if ((!poly || poly.verts.length !== 4 || pErr > rectErr * 1.3) && rectErr < 0.075 && (pErr > 0.035 || !poly || poly.verts.length > 4)) {
+    const pts = snapClosed(R.pts); return { kind: R.w && Math.abs(R.w - R.h) < 0.06 * Math.max(R.w, R.h) ? 'Square' : 'Rectangle', shape: { type: 'poly', closed: true, pts: Math.abs(signedArea(pts)) > 0 ? pts : R.pts } };
+  }
+  if (!poly || pErr > 0.09) {
+    if (aspect < 1.5 && circErr < 0.17 && (strong <= 1 || circErr < 0.1)) return { kind: 'Circle', shape: { type: 'circle', c, r: mr } };
+    return { kind: 'Curve', shape: { type: 'poly', closed: true, smooth: true, pts: smoothClosed(loop) } };
+  }
+  const snapped = snapClosed(poly.verts);
+  const kind = snapped.length === 3 ? 'Triangle' : snapped.length === 4 ? (isRect(snapped) ? 'Rectangle' : 'Quad') : `${snapped.length}-sided outline`;
+  return { kind, shape: { type: 'poly', closed: true, pts: snapped } };
+}
+function classifyOpen(pts) {
+  const L = pathLen(pts); const n = clamp(Math.round(L / (diagOf(pts) / 30)), 24, 120);
+  let rs = resample(pts, n);
+  { // one straight stroke, however shaky?
+    const F = fitLine(rs); const span = V.dist(rs[0], rs[rs.length - 1]);
+    if (span > 0.85 * L * 0.9 && rs.every((q) => lineDist(q, F) < 0.07 * span + 1.5 / view.s)) { const pr = (q) => V.add(F.c, V.mul(F.d, V.dot(V.sub(q, F.c), F.d))); return { kind: 'Line', shape: { type: 'poly', closed: false, pts: snapOpen([pr(rs[0]), pr(rs[rs.length - 1])]) } }; }
+  }
+  const chordDev = (a, b, seg) => seg.reduce((m, q) => Math.max(m, distToSeg(q, a, b)), 0);
+  const { corners } = strawCorners(rs, false, 3);
+  let ids = [0, ...corners.map((q) => q.i), rs.length - 1];
+  // hooks: a tiny first or last segment that turns sharply
+  const segLen = (a, b) => pathLen(rs.slice(a, b + 1));
+  if (ids.length > 2 && segLen(ids[0], ids[1]) < 0.1 * L) ids.splice(0, 1);
+  if (ids.length > 2 && segLen(ids[ids.length - 2], ids[ids.length - 1]) < 0.1 * L) ids.splice(ids.length - 1, 1);
+  if (ids.length === 2) {
+    const a = rs[ids[0]], b = rs[ids[1]]; const seg = rs.slice(ids[0], ids[1] + 1);
+    if (chordDev(a, b, seg) < 0.07 * V.dist(a, b)) { const F = fitLine(seg); const pr = (q) => V.add(F.c, V.mul(F.d, V.dot(V.sub(q, F.c), F.d))); return { kind: 'Line', shape: { type: 'poly', closed: false, pts: snapOpen([pr(a), pr(b)]) } }; }
+    return { kind: 'Curve', shape: { type: 'poly', closed: false, smooth: true, pts: cleanVerts(rdp(resample(pts, 160), 0.006 * diagOf(pts)), false, 0.008 * diagOf(pts), 3) } };
+  }
+  // neighbouring runs heading the same way are one side
+  for (let s = 1; s < ids.length - 1; ) {
+    const A = fitLine(rs.slice(ids[s - 1], ids[s] + 1)), B = fitLine(rs.slice(ids[s], ids[s + 1] + 1));
+    if (Math.abs(V.cross(A.d, B.d)) < 0.34 && V.dot(A.d, B.d) * V.dot(V.sub(rs[ids[s]], rs[ids[s - 1]]), A.d) * V.dot(V.sub(rs[ids[s + 1]], rs[ids[s]]), B.d) > 0) ids.splice(s, 1); else s++;
+  }
+  if (ids.length === 2) { const seg = rs.slice(ids[0], ids[1] + 1); const F = fitLine(seg); const ch = V.dist(seg[0], seg[seg.length - 1]) || 1; if (seg.every((q) => lineDist(q, F) < 0.08 * ch)) { const pr = (q) => V.add(F.c, V.mul(F.d, V.dot(V.sub(q, F.c), F.d))); return { kind: 'Line', shape: { type: 'poly', closed: false, pts: snapOpen([pr(seg[0]), pr(seg[seg.length - 1])]) } }; } }
+  const lines = []; let curved = false;
+  for (let s = 0; s < ids.length - 1; s++) {
+    const seg = rs.slice(ids[s], ids[s + 1] + 1); const tr = Math.floor(seg.length * 0.18); const core = seg.length - 2 * tr >= 2 ? seg.slice(tr, seg.length - tr) : seg;
+    const F = fitLine(core); const ch = V.dist(seg[0], seg[seg.length - 1]) || 1;
+    if (seg.some((q) => lineDist(q, F) / ch > 0.14)) curved = true; lines.push(F);
+  }
+  if (curved || lines.length > 8) return { kind: 'Curve', shape: { type: 'poly', closed: false, smooth: true, pts: cleanVerts(rdp(resample(pts, 160), 0.006 * diagOf(pts)), false, 0.008 * diagOf(pts), 3) } };
+  const pr = (q, F) => V.add(F.c, V.mul(F.d, V.dot(V.sub(q, F.c), F.d)));
+  const verts = [pr(rs[ids[0]], lines[0])];
+  for (let s = 1; s < lines.length; s++) verts.push(lineIntersect(lines[s - 1].c, lines[s - 1].d, lines[s].c, lines[s].d) || rs[ids[s]]);
+  verts.push(pr(rs[ids[ids.length - 1]], lines[lines.length - 1]));
+  const snapped = snapOpen(cleanVerts(verts, false, 0.02 * diagOf(pts), 10));
   return { kind: snapped.length === 2 ? 'Line' : 'Polyline', shape: { type: 'poly', closed: false, pts: snapped } };
 }
+function recognize(raw) {
+  const s = view.s; const pts = [];
+  for (const p of raw) if (!pts.length || V.dist(pts[pts.length - 1], p) > 0.75 / s) pts.push(p);
+  if (pts.length < 2) return null;
+  const L = pathLen(pts); if (L * s < 12) return null;
+  const rs = resample(pts, clamp(Math.round((L * s) / 4), 40, 400));
+  const loop = pathLen(rs) > 1.6 * diagOf(rs) ? findLoop(rs) : null;
+  return loop ? classifyClosed(loop) : classifyOpen(pts);
+}
+/* RECOGNIZER-END */
 function snapRadiusW() { return 22 / view.s; }
 function nearestVertex(p, excludeId, onlyEnds = false) {
   let best = null; const R = snapRadiusW();
