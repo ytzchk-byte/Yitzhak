@@ -102,6 +102,7 @@ header .seg { margin-left: auto; }
 .chip.face { background: var(--panel); color: var(--ink); border: 1px solid var(--line); }
 .chip.face svg { width: 14px; height: 14px; }
 .side { position: absolute; right: max(10px, env(safe-area-inset-right, 0px)); top: 10px; z-index: 3; display: flex; flex-direction: column; gap: 6px; }
+.side .iconbtn.eraser[aria-pressed="true"] { background: color-mix(in srgb, var(--danger) 16%, var(--panel)); color: var(--danger); border-color: var(--danger); }
 .side .iconbtn { background: var(--panel); border: 1px solid var(--line); box-shadow: 0 2px 8px rgba(0,0,0,.08); }
 .views { position: absolute; right: max(10px, env(safe-area-inset-right, 0px)); top: 10px; z-index: 3; display: flex; flex-direction: column; gap: 6px; }
 .views button { border: 1px solid var(--line); background: var(--panel); border-radius: 9px; padding: 7px 0; width: 52px; font: 600 11px/1 var(--f-mono); letter-spacing: .05em; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
@@ -275,6 +276,7 @@ details.more[open] summary { color: var(--ink); }
     </div>
     <div class="side" id="sketch-side">
       <button class="iconbtn" id="btn-fit" aria-label="Fit sketch to screen"><svg class="i"><use href="#i-fit"/></svg></button>
+      <button class="iconbtn eraser" id="btn-eraser" aria-label="Eraser" aria-pressed="false"><svg class="i"><use href="#i-erase"/></svg></button>
     </div>
     <div class="views" id="views3d" hidden>
       <button data-view="iso">ISO</button>
@@ -302,12 +304,12 @@ details.more[open] summary { color: var(--ink); }
 
   <nav class="toolbar" id="tb-sketch" aria-label="Sketch tools">
     <button class="tool" data-tool="draw" aria-pressed="true"><svg class="i"><use href="#i-pen"/></svg>Draw</button>
+    <button class="tool" data-tool="erase"><svg class="i"><use href="#i-erase"/></svg>Erase</button>
     <button class="tool" data-tool="dim"><svg class="i"><use href="#i-dim"/></svg>Dimension</button>
     <button class="tool" data-tool="select"><svg class="i"><use href="#i-select"/></svg>Select</button>
     <button class="tool" data-tool="line"><svg class="i"><use href="#i-line"/></svg>Line</button>
     <button class="tool" data-tool="rect"><svg class="i"><use href="#i-rect"/></svg>Rect</button>
     <button class="tool" data-tool="circle"><svg class="i"><use href="#i-circle"/></svg>Circle</button>
-    <button class="tool" data-tool="erase"><svg class="i"><use href="#i-erase"/></svg>Erase</button>
     <span class="tool sep" aria-hidden="true"></span>
     <button class="tool" id="btn-photo"><svg class="i"><use href="#i-image"/></svg>Photo</button>
     <button class="tool" id="btn-clear"><svg class="i"><use href="#i-trash"/></svg>Clear</button>
@@ -563,7 +565,7 @@ const Digits = (() => {
    Document state + history
    ========================================================================= */
 const COLORS = ['#8ea7d8', '#d98f62', '#85b98f', '#cdb76c', '#a990cc', '#9ba5af'];
-const newSketch = () => ({ shapes: [], plane: null, refs: [] });
+const newSketch = () => ({ shapes: [], plane: null, refs: [], rels: [] });
 let doc = { sketch: newSketch(), stash: null, parts: [] };
 let underlay = null; let underlayImg = null;
 const hist = { undo: [], redo: [], cur: null };
@@ -575,7 +577,16 @@ function commit() {
 }
 function loadDoc(d) {
   doc.sketch = Object.assign(newSketch(), d.sketch || {}); doc.stash = d.stash || null;
+  migrateSketch(doc.sketch); if (doc.stash) migrateSketch(doc.stash);
   clearParts(); (d.parts || []).forEach((p) => addPart(p, false));
+}
+// Older projects had no relations: square sides were kept implicitly. Give them explicit ones.
+function migrateSketch(sk2) {
+  sk2.shapes.forEach((s) => { s.dims = s.dims || {}; s.angs = s.angs || {}; s.vangs = s.vangs || {}; s.locs = s.locs || []; });
+  if (Array.isArray(sk2.rels)) return;
+  sk2.rels = []; const keep = doc.sketch; doc.sketch = sk2;
+  sk2.shapes.forEach((s) => { if (s.type === 'poly' && !s.smooth) inferRelations(s, { eq: false, circles: false }); });
+  doc.sketch = keep;
 }
 function restore(json) {
   loadDoc(JSON.parse(json));
@@ -651,23 +662,8 @@ function validLocs(sh) {
 function locNormal(l) { const L = refLine(l.to); return { n: V.mul([-L.dir[1], L.dir[0]], l.side), a: L.a, dir: L.dir }; }
 function locDistance(sh, l) { const { n, a } = locNormal(l); return V.dot(V.sub(locAnchor(sh, l), a), n); }
 function translateShape(sh, d) { if (sh.type === 'circle') sh.c = V.add(sh.c, d); else sh.pts = sh.pts.map((p) => V.add(p, d)); }
-function applyLocs(sh) {
-  const locs = validLocs(sh); if (!locs.length) return;
-  const l1 = locs[0]; const A = locNormal(l1);
-  const r1 = l1.d - V.dot(V.sub(locAnchor(sh, l1), A.a), A.n);
-  const l2 = locs.find((l, k) => k > 0 && Math.abs(V.cross(locNormal(l).dir, A.dir)) > 0.05);
-  let t;
-  if (l2) {
-    const B = locNormal(l2); const r2 = l2.d - V.dot(V.sub(locAnchor(sh, l2), B.a), B.n);
-    const det = A.n[0] * B.n[1] - A.n[1] * B.n[0];
-    t = [(r1 * B.n[1] - A.n[1] * r2) / det, (A.n[0] * r2 - B.n[0] * r1) / det];
-  } else t = V.mul(A.n, r1);
-  translateShape(sh, t);
-}
-function applyAllLocs() {
-  // containers first (shapes with larger area), so nested positions follow their outline
-  [...shapes()].sort((a, b) => shapeArea(b) - shapeArea(a)).forEach((s) => { if ((s.locs || []).length) applyLocs(s); });
-}
+function applyLocs() { solveAll(); }
+function applyAllLocs() { solveAll(); }
 
 // Regions: outer boundaries with their holes (one level of nesting, alternating).
 function buildRegions(list = shapes()) {
@@ -696,89 +692,301 @@ function polyDirs(sh) {
 const hasVangs = (sh) => !!(sh.vangs && Object.keys(sh.vangs).length);
 const canAngle = (sh, i) => sh.type === 'poly' && !sh.smooth && (sh.closed ? sh.pts.length >= 3 : i > 0 && i < sh.pts.length - 1);
 const inEdge = (sh, i) => (sh.closed ? (i - 1 + sh.pts.length) % sh.pts.length : i - 1);
-// A corner angle between two horizontal/vertical sides lets one of them turn: the non-horizontal one, else the shorter.
-function releasedEdges(sh) {
-  const rel = new Set(); if (!hasVangs(sh)) return rel;
-  const { n, dirs, L } = polyDirs(sh);
-  const kept = (k) => k >= 0 && k < n && !(sh.angs && sh.angs[k] != null) && isAxisDir(dirs[k]) && !rel.has(k);
-  for (const i of Object.keys(sh.vangs).map(Number).sort((a, b) => a - b)) {
-    const a = inEdge(sh, i), b = i; if (a < 0 || b >= n || !kept(a) || !kept(b)) continue;
-    const ha = Math.abs(dirs[a][1]) < 0.01, hb = Math.abs(dirs[b][1]) < 0.01;
-    rel.add(ha !== hb ? (ha ? b : a) : L[a] <= L[b] ? a : b);
-  }
-  return rel;
+const stampOf = (sh) => (sh.stamp = sh.stamp || {});
+
+/* =========================================================================
+   Constraint engine: sizes, angles, positions and relations solved together
+   ========================================================================= */
+const REL = {
+  h: { g: 'H', name: 'Horizontal', kinds: ['edge'] }, v: { g: 'V', name: 'Vertical', kinds: ['edge'] },
+  par: { g: '∥', name: 'Parallel', kinds: ['edge', 'edge'] }, perp: { g: '⊥', name: 'Perpendicular', kinds: ['edge', 'edge'] },
+  eq: { g: '=', name: 'Equal length', kinds: ['edge', 'edge'] }, coll: { g: '⋯', name: 'Collinear', kinds: ['edge', 'edge'] },
+  conc: { g: '◎', name: 'Concentric', kinds: ['circle', 'circle'] }, eqr: { g: '=', name: 'Equal size', kinds: ['circle', 'circle'] },
+  tan: { g: 'T', name: 'Tangent', kinds: ['edge', 'circle'] },
+};
+const rels = () => (doc.sketch.rels = doc.sketch.rels || []);
+function refOk(ref, kind) {
+  const sh = byId(ref && ref.id); if (!sh) return false;
+  if (kind === 'circle') return sh.type === 'circle';
+  return sh.type === 'poly' && !sh.smooth && ref.i >= 0 && ref.i < edgeCount(sh);
 }
-// Unknowns: every side length and each free side direction. Rows: the outline closes (2), then each length and
-// corner angle in the order they were added. A row that adds no rank repeats what is already known: over-defined.
-function polyAnalysis(sh) {
-  const { n, dirs, L } = polyDirs(sh); const dims = sh.dims || {}, angs = sh.angs || {}, vangs = sh.vangs || {}; const rel = releasedEdges(sh);
-  const unk = [];
-  for (let k = 0; k < n; k++) unk.push({ k, t: 'len' });
-  for (let k = 0; k < n; k++) if (angs[k] == null && (!isAxisDir(dirs[k]) || rel.has(k))) unk.push({ k, t: 'ang' });
-  const m = unk.length; const col = (t, k) => unk.findIndex((u) => u.t === t && u.k === k); const mL = L.reduce((a, b) => a + b, 0) / Math.max(n, 1) || 1;
-  const basis = [];
-  const addRow = (r) => { let w = r.slice(); for (const b of basis) { const d = w.reduce((t, x, i) => t + x * b[i], 0); w = w.map((x, i) => x - d * b[i]); } const nw = Math.hypot(...w, 0), nr = Math.hypot(...r, 0); if (nr > 0 && nw > 1e-7 * nr) { basis.push(w.map((x) => x / nw)); return true; } return false; };
-  if (sh.closed) {
-    const rx = new Array(m).fill(0), ry = new Array(m).fill(0);
-    unk.forEach((u, j) => { const d = dirs[u.k]; if (u.t === 'len') { rx[j] = d[0]; ry[j] = d[1]; } else { rx[j] = -d[1] * L[u.k]; ry[j] = d[0] * L[u.k]; } });
-    addRow(rx); addRow(ry);
-  }
-  const stamp = sh.stamp || {};
-  const cons = [];
-  for (const k of Object.keys(dims).map(Number)) if (k < n) { const r = new Array(m).fill(0); r[col('len', k)] = 1; cons.push({ key: 'd' + k, k, r }); }
-  for (const i of Object.keys(vangs).map(Number)) if (canAngle(sh, i)) { const r = new Array(m).fill(0); const ja = col('ang', inEdge(sh, i)), jb = col('ang', i); if (ja >= 0) r[ja] = -mL; if (jb >= 0) r[jb] = mL; cons.push({ key: 'v' + i, i, r }); }
-  cons.sort((a, b) => (stamp[a.key] || 0) - (stamp[b.key] || 0) || (a.key < b.key ? -1 : 1));
-  const red = [], redV = [];
-  for (const c of cons) if (!addRow(c.r)) (c.key[0] === 'd' ? red : redV).push(c.key[0] === 'd' ? c.k : c.i);
-  const det = unk.map((_, j) => basis.reduce((t, b) => t + b[j] * b[j], 0) > 1 - 1e-6);
-  const dof = m - basis.length;
-  const edges = new Array(n).fill('dim'), angState = dirs.map((d, k) => (angs[k] != null ? 'set' : isAxisDir(d) ? 'axis' : 'derived'));
-  unk.forEach((u, j) => { if (u.t === 'len') edges[u.k] = dims[u.k] != null ? 'dim' : det[j] ? 'derived' : 'free'; else angState[u.k] = det[j] ? 'derived' : 'free'; });
-  red.forEach((k) => (edges[k] = 'over'));
-  const hot = edges.map((e, k) => e === 'free' || angState[k] === 'free');
-  const freeLen = unk.filter((u, j) => u.t === 'len' && !det[j]).map((u) => u.k);
-  const freeAng = unk.filter((u, j) => u.t === 'ang' && !det[j]).map((u) => u.k);
-  const pri = (k) => (Math.abs(dirs[k][1]) < 0.01 ? 3 : Math.abs(dirs[k][0]) < 0.01 ? 2 : 1) * 1e6 + L[k];
-  freeLen.sort((a, b) => pri(b) - pri(a));
-  let suggest = null;
-  if (freeLen.length) suggest = { t: 'len', k: freeLen[0] };
-  else if (freeAng.length) {
-    const k = freeAng[0]; const known = (e) => angState[e] !== 'free';
-    const vIn = k, vOut = (k + 1) % sh.pts.length;
-    const vi = known(inEdge(sh, vIn)) && !vangs[vIn] ? vIn : vOut;
-    suggest = canAngle(sh, vi) ? { t: 'vang', i: vi } : { t: 'ang', k };
-  }
-  return { dof, edges, angState, hot, red, redV, suggest };
+const relValid = (r) => REL[r.type] && refOk(r.a, REL[r.type].kinds[0]) && (REL[r.type].kinds.length < 2 || (refOk(r.b, REL[r.type].kinds[1]) && !(r.a.id === r.b.id && r.a.i === r.b.i)));
+const relShapes = (r) => [r.a && r.a.id, r.b && r.b.id].filter(Boolean);
+const sameRef = (p, q) => p && q && p.id === q.id && (p.i ?? -1) === (q.i ?? -1);
+function pruneRels() { doc.sketch.rels = rels().filter(relValid); }
+
+function buildModel() {
+  const shs = shapes(); const off = new Map(); let N = 0;
+  for (const sh of shs) { off.set(sh.id, N); N += sh.type === 'circle' ? 3 : sh.pts.length * 2; }
+  const x = new Float64Array(N);
+  for (const sh of shs) { const o = off.get(sh.id); if (sh.type === 'circle') { x[o] = sh.c[0]; x[o + 1] = sh.c[1]; x[o + 2] = sh.r; } else sh.pts.forEach((q, i) => { x[o + 2 * i] = q[0]; x[o + 2 * i + 1] = q[1]; }); }
+  const lens = shs.flatMap((sh) => (sh.type === 'circle' ? [sh.r * 2] : Array.from({ length: edgeCount(sh) }, (_, k) => V.dist(...edgePts(sh, k)))));
+  const scale = lens.length ? Math.max(lens.reduce((a, b) => a + b, 0) / lens.length, 1e-3) : 10;
+  return { shs, off, N, x, scale, byId: new Map(shs.map((q) => [q.id, q])) };
 }
-function posAnalysis(sh) {
-  if (!needsPosition(sh)) return { need: false, have: 0 };
-  const locs = validLocs(sh); let have = 0; let over = false;
-  if (locs.length) {
-    have = 1; const d0 = refLine(locs[0].to).dir;
-    for (let k = 1; k < locs.length; k++) { const dk = refLine(locs[k].to).dir; if (Math.abs(V.cross(d0, dk)) > 0.05 && have < 2) have = 2; else over = true; }
-  }
-  return { need: true, have, over };
+function readBack(M, x) {
+  for (const sh of M.shs) { const o = M.off.get(sh.id); if (sh.type === 'circle') { sh.c = [x[o], x[o + 1]]; sh.r = x[o + 2]; } else sh.pts = sh.pts.map((_, i) => [x[o + 2 * i], x[o + 2 * i + 1]]); }
 }
-function analyzeSketch() {
-  const A = { polys: new Map(), pos: new Map(), items: [], need: 0, over: 0, approx: 0, closed: 0, status: 'empty' };
-  const sh = shapes(); if (!sh.length) return A;
-  const calibrated = sketchCalibrated();
-  const outers = buildRegions();
-  A.closed = outers.length;
-  for (const s of sh) {
-    const name = s.type === 'circle' ? (containerOf(s) || doc.sketch.plane ? 'Hole' : 'Circle') : s.closed ? (containerOf(s) ? 'Cutout' : 'Outline') : 'Line';
-    if (s.type === 'poly' && !s.closed) { A.items.push({ lvl: 'info', text: 'Open line is not part of a solid', act: { t: 'del', id: s.id }, btn: 'Delete' }); continue; }
-    if (s.type === 'poly' && s.smooth) { A.approx++; A.items.push({ lvl: 'approx', text: `${name} is a freeform curve. Its size comes from your drawing.`, act: { t: 'straighten', id: s.id }, btn: 'Straighten' }); }
-    if (s.type === 'poly' && !s.smooth) {
-      const P = polyAnalysis(s); A.polys.set(s.id, P); A.need += P.dof;
-      if (P.dof) A.items.push({ lvl: 'need', text: `${name} needs ${plural(P.dof, 'more dimension')}`, act: { t: 'suggest', id: s.id }, btn: 'Add' });
-      for (const k of P.red) { A.over++; A.items.push({ lvl: 'over', text: `Length ${fmt(s.dims[k])} is already set by other dimensions`, act: { t: 'undim', id: s.id, k }, btn: 'Remove' }); }
-      for (const i of P.redV) { A.over++; A.items.push({ lvl: 'over', text: `Angle ${fmt(s.vangs[i])}° is already set by other sizes`, act: { t: 'unvang', id: s.id, i }, btn: 'Remove' }); }
+const vRange = (M, id) => { const sh = M.byId.get(id); if (!sh) return []; const o = M.off.get(id); const n = sh.type === 'circle' ? 3 : sh.pts.length * 2; return Array.from({ length: n }, (_, k) => o + k); };
+const XP = (M, x, id, i) => { const o = M.off.get(id) + 2 * i; return [x[o], x[o + 1]]; };
+const XE = (M, x, id, i) => [XP(M, x, id, i), XP(M, x, id, (i + 1) % M.byId.get(id).pts.length)];
+const XC = (M, x, id) => { const o = M.off.get(id); return { c: [x[o], x[o + 1]], r: x[o + 2] }; };
+const XLine = (M, x, to) => { if (String(to.id).startsWith('ref:')) { const L = refLine(to); return L ? [L.a, L.b] : null; } return M.byId.has(to.id) ? XE(M, x, to.id, to.i) : null; };
+const XAnchor = (M, x, sh, l) => (sh.type === 'circle' ? XC(M, x, sh.id).c : XP(M, x, sh.id, l.j));
+const unitV = (a, b) => V.norm(V.sub(b, a));
+const dirAng = (a, b) => Math.atan2(b[1] - a[1], b[0] - a[0]);
+const wrapHalf = (t) => { t = ((t % Math.PI) + Math.PI) % Math.PI; return t > Math.PI / 2 ? t - Math.PI : t; }; // angle between lines, in (-90°, 90°]
+function relFn(M, r) {
+  const S = M.scale; const E = (x, q) => XE(M, x, q.id, q.i); const C = (x, q) => XC(M, x, q.id);
+  switch (r.type) {
+    case 'h': return (x) => { const [a, b] = E(x, r.a); return [b[1] - a[1]]; };
+    case 'v': return (x) => { const [a, b] = E(x, r.a); return [b[0] - a[0]]; };
+    case 'par': case 'perp': case 'coll': {
+      // measure the angle from line a to line b, picking b's direction so the start is away from the ±180° jump
+      const sAng = (u, v) => Math.atan2(V.cross(u, v), V.dot(u, v));
+      const [a0, b0] = E(M.x, r.a), [c0, d0] = E(M.x, r.b); const flip = Math.abs(sAng(unitV(a0, b0), unitV(c0, d0))) > Math.PI / 2 ? -1 : 1;
+      const delta = (x) => { const [a, b] = E(x, r.a), [c, d] = E(x, r.b); return sAng(unitV(a, b), V.mul(unitV(c, d), flip)); };
+      if (r.type === 'perp') { const sg = Math.sign(delta(M.x)) || 1; return (x) => [(delta(x) - (sg * Math.PI) / 2) * S]; }
+      if (r.type === 'par') return (x) => [delta(x) * S];
+      return (x) => { const [a, b] = E(x, r.a), [c] = E(x, r.b); return [delta(x) * S, V.cross(unitV(a, b), V.sub(c, a))]; };
     }
-    if (s.type === 'circle' && s.dim == null) { A.need++; A.items.push({ lvl: 'need', text: `${name} diameter is not set`, act: { t: 'dia', id: s.id }, btn: 'Add' }); }
-    const pos = posAnalysis(s); A.pos.set(s.id, pos);
-    if (pos.need && pos.have < 2) { A.need += 2 - pos.have; A.items.push({ lvl: 'need', text: `${name} position needs ${plural(2 - pos.have, 'more distance')}`, act: { t: 'pos', id: s.id }, btn: 'Add' }); }
-    if (pos.over) { A.over++; A.items.push({ lvl: 'over', text: `${name} has two distances in the same direction`, act: { t: 'unloc', id: s.id }, btn: 'Fix' }); }
+    case 'eq': return (x) => { const [a, b] = E(x, r.a), [c, d] = E(x, r.b); return [V.dist(a, b) - V.dist(c, d)]; };
+    case 'conc': return (x) => { const p = C(x, r.a), q = C(x, r.b); return [p.c[0] - q.c[0], p.c[1] - q.c[1]]; };
+    case 'eqr': return (x) => [C(x, r.a).r - C(x, r.b).r];
+    case 'tan': return (x) => { const [a, b] = E(x, r.a); const q = C(x, r.b); return [Math.abs(V.cross(unitV(a, b), V.sub(q.c, a))) - q.r]; };
+  }
+  return () => [];
+}
+// Every constraint as a residual function. Shapes in `follow` are being dragged: their own sizes give way.
+function collectConstraints(M, opt = {}) {
+  const follow = opt.follow || new Set(); const out = []; const S = M.scale;
+  const add = (key, ids, f, extra) => { const vars = [...new Set(ids.flatMap((id) => vRange(M, id)))]; out.push({ key, f, vars, ...extra }); };
+  for (const sh of M.shs) {
+    const id = sh.id; const fol = follow.has(id); const st = sh.stamp || {};
+    if (sh.type === 'circle') { if (sh.dim != null && !fol) add(`c:${id}`, [id], (x) => [2 * XC(M, x, id).r - sh.dim], { explicit: true, stamp: st.c || 0 }); }
+    else if (!fol) {
+      const E = edgeCount(sh), n = sh.pts.length;
+      for (const [k, Lk] of Object.entries(sh.dims || {})) { const kk = +k; if (kk < E) add(`d:${id}:${kk}`, [id], (x) => { const [a, b] = XE(M, x, id, kk); return [V.dist(a, b) - Lk]; }, { explicit: true, stamp: st['d' + kk] || 0 }); }
+      for (const [k, deg] of Object.entries(sh.vangs || {})) {
+        const i = +k; if (!canAngle(sh, i)) continue; const cur = turnAt(sh.pts, i, n);
+        const tau = (sh.closed ? Math.sign(signedArea(sh.pts)) || 1 : Math.sign(cur) || 1) * (Math.PI - (deg * Math.PI) / 180);
+        add(`v:${id}:${i}`, [id], (x) => { const t = turnAt([XP(M, x, id, (i - 1 + n) % n), XP(M, x, id, i), XP(M, x, id, (i + 1) % n)], 1, 3) - tau; return [Math.atan2(Math.sin(t), Math.cos(t)) * S]; }, { explicit: true, stamp: st['v' + i] || 0 });
+      }
+      for (const k of Object.keys(sh.angs || {}).map(Number)) {
+        if (k >= E) continue; const d = (sh.angd && sh.angd[k]) || unitV(...edgePts(sh, k));
+        add(`a:${id}:${k}`, [id], (x) => { const [a, b] = XE(M, x, id, k); return [V.cross(d, unitV(a, b)) * S]; }, { explicit: true, stamp: st['a' + k] || 0 });
+      }
+    }
+    if (!fol) (sh.locs || []).forEach((l, j) => {
+      if (!refLine(l.to)) return; const owner = String(l.to.id).startsWith('ref:') ? [] : [l.to.id];
+      add(`l:${id}:${j}`, [id, ...owner], (x) => { const L = XLine(M, x, l.to); const q = XAnchor(M, x, sh, l); const u = unitV(L[0], L[1]); return [V.dot(V.sub(q, L[0]), [-u[1] * l.side, u[0] * l.side]) - l.d]; }, { explicit: true, stamp: st['l' + j] || 0 });
+    });
+  }
+  for (const r of rels()) if (relValid(r) && !(opt.skipRel && opt.skipRel.has(r.id))) add(`r:${r.id}`, relShapes(r), relFn(M, r), { explicit: !r.auto, auto: !!r.auto, stamp: r.t || 0, rel: r });
+  return out;
+}
+const residuals = (cons, x) => { const r = []; for (const c of cons) r.push(...c.f(x)); return r; };
+function jacRows(cons, x, h) {
+  const rows = [];
+  for (const c of cons) {
+    const r0 = c.f(x); const R = r0.map(() => new Float64Array(x.length));
+    for (const j of c.vars) { const xj = x[j]; x[j] = xj + h; const r1 = c.f(x); x[j] = xj; for (let k = 0; k < r0.length; k++) R[k][j] = (r1[k] - r0[k]) / h; }
+    for (const row of R) rows.push({ row, c });
+  }
+  return rows;
+}
+const norm2 = (v) => { let t = 0; for (const a of v) t += a * a; return t; };
+// Minimum-change Newton: satisfy every constraint while moving the geometry as little as possible.
+function solveExact(M, cons, x0, maxIt = 80) {
+  let x = Float64Array.from(x0); const S = M.scale; const h = 1e-7 * S; const N = x.length;
+  let r = residuals(cons, x); let err = norm2(r); const tol = (1e-9 * S) ** 2 * Math.max(r.length, 1);
+  for (let it = 0; it < maxIt && err > tol; it++) {
+    const J = jacRows(cons, x, h).map((q) => q.row); const m = J.length;
+    const A = Array.from({ length: m }, () => new Array(m).fill(0));
+    for (let i = 0; i < m; i++) for (let k = i; k < m; k++) { let t = 0; const a = J[i], b = J[k]; for (let j = 0; j < N; j++) t += a[j] * b[j]; A[i][k] = A[k][i] = t; }
+    const tr = A.reduce((t, row, i) => t + row[i], 0) / m || 1; for (let i = 0; i < m; i++) A[i][i] += 1e-10 * tr;
+    const y = solveLinear(A, r); if (!y) break;
+    const dx = new Float64Array(N); for (let i = 0; i < m; i++) { const yi = y[i]; if (!yi) continue; const a = J[i]; for (let j = 0; j < N; j++) dx[j] -= a[j] * yi; }
+    const big = Math.sqrt(norm2(dx)); let step = big > 3 * S ? (3 * S) / big : 1, ok = false;
+    for (let ls = 0; ls < 16; ls++) { const xn = x.map((v, j) => v + step * dx[j]); const rn = residuals(cons, xn); const en = norm2(rn); if (en < err) { x = xn; r = rn; err = en; ok = true; break; } step /= 2; }
+    if (!ok) break;
+  }
+  return Math.sqrt(err / Math.max(r.length, 1)) <= 1e-5 * S ? x : null;
+}
+// Dragging: follow the finger as closely as the constraints allow (weighted least squares), then clean up exactly.
+function solveDrag(M, cons, x0, targets) {
+  let x = Float64Array.from(x0); const N = x.length; const S = M.scale; const h = 1e-7 * S; const w = 1e-3;
+  const cost = (y, r) => norm2(r) + w * targets.reduce((t, q) => t + (y[q.j] - q.v) ** 2, 0);
+  let r = residuals(cons, x); let c0 = cost(x, r);
+  for (let it = 0; it < 10; it++) {
+    const J = jacRows(cons, x, h).map((q) => q.row);
+    const H = Array.from({ length: N }, () => new Array(N).fill(0)); const g = new Array(N).fill(0);
+    J.forEach((a, i) => { const ri = r[i]; const nz = []; for (let j = 0; j < N; j++) if (a[j]) nz.push(j); for (const j of nz) { g[j] += a[j] * ri; for (const k of nz) H[j][k] += a[j] * a[k]; } });
+    for (const q of targets) { H[q.j][q.j] += w; g[q.j] += w * (x[q.j] - q.v); }
+    let tr = 0; for (let j = 0; j < N; j++) tr += H[j][j]; for (let j = 0; j < N; j++) H[j][j] += 1e-9 * (tr / N || 1);
+    const d = solveLinear(H, g.map((v) => -v)); if (!d) break;
+    const big = Math.sqrt(norm2(d)); let step = big > 3 * S ? (3 * S) / big : 1, ok = false;
+    for (let ls = 0; ls < 12; ls++) { const xn = x.map((v, j) => v + step * d[j]); const rn = residuals(cons, xn); const cn = cost(xn, rn); if (cn < c0) { x = xn; r = rn; c0 = cn; ok = true; break; } step /= 2; }
+    if (!ok) break;
+  }
+  return (cons.length ? solveExact(M, cons, x, 30) : x) || x;
+}
+function geometryOk(M, x) {
+  for (const sh of M.shs) {
+    if (sh.type === 'circle') { if (XC(M, x, sh.id).r <= 1e-3) return false; continue; }
+    for (let k = 0; k < edgeCount(sh); k++) { const [a, b] = XE(M, x, sh.id, k); if (V.dist(a, b) < 1e-3) return false; }
+    if (sh.closed && sh.pts.length >= 3) { const pts = sh.pts.map((_, i) => XP(M, x, sh.id, i)); if ((Math.sign(signedArea(pts)) || 1) !== (Math.sign(signedArea(sh.pts)) || 1)) return false; }
+  }
+  return true;
+}
+function solveAll() {
+  pruneRels(); const M = buildModel(); if (!M.N) return true;
+  const cons = collectConstraints(M); if (!cons.length) return true;
+  const x = solveExact(M, cons, M.x);
+  if (!x) return 'Those sizes, angles and relations can’t all be met.';
+  if (!geometryOk(M, x)) return 'That doesn’t fit with the other sizes.';
+  readBack(M, x); return true;
+}
+function restoreSketch(json) {
+  const snap = JSON.parse(json);
+  doc.sketch.shapes.forEach((sh) => { const o = snap.shapes.find((q) => q.id === sh.id); if (o) { Object.keys(sh).forEach((k) => delete sh[k]); Object.assign(sh, o); } });
+  doc.sketch.rels = snap.rels || [];
+}
+let pendingNote = null;
+const takeNote = () => { const n = pendingNote; pendingNote = null; return n; };
+// Apply an edit and re-solve. Automatic relations that clash with it step aside; anything else is refused.
+function change(mutate, scope = [], key = null, near = null) {
+  const snap = JSON.stringify(doc.sketch); mutate();
+  const redundant = () => !!key && analyzeSketch().overKeys.has(key);
+  const good = () => solveAll() === true && !redundant();
+  let r = solveAll();
+  if (r !== true || redundant()) {
+    const touches = (q) => !!near && [q.a, q.b].some((ref) => ref && ref.id === near.id && (near.edges || []).includes(ref.i));
+    const order = { v: 0, h: 1, eq: 2, perp: 3, par: 4, eqr: 5, conc: 6, coll: 7, tan: 8 };
+    const autos = rels().filter((q) => q.auto && relShapes(q).some((id) => scope.includes(id))).sort((p2, q2) => (touches(q2) - touches(p2)) || order[p2.type] - order[q2.type]);
+    let fixedBy = null;
+    for (const q of autos) { const keep = rels().slice(); doc.sketch.rels = keep.filter((z) => z !== q); if (good()) { fixedBy = [q]; break; } doc.sketch.rels = keep; }
+    if (!fixedBy && r !== true) { const removed = []; for (const q of autos) { doc.sketch.rels = rels().filter((z) => z !== q); removed.push(q); if (solveAll() === true) { fixedBy = removed; break; } } }
+    if (fixedBy) { r = true; pendingNote = `Removed automatic ${fixedBy.map((q) => REL[q.type].name.toLowerCase()).join(', ')} to fit this`; }
+    else if (r === true) solveAll(); // set twice with your own sizes: keep it, it shows as over-defined
+  }
+  if (r !== true) { restoreSketch(snap); return { ok: false, msg: r }; }
+  return { ok: true };
+}
+// Relations the app adds by itself when a shape is drawn; only the ones that add information are kept.
+function inferRelations(sh, opts = {}) {
+  const before = new Set(rels().map((q) => q.id)); const add = (type, a, b) => rels().push({ id: uid(), type, a, b, auto: true, t: Date.now() });
+  if (sh.type === 'poly' && !sh.smooth) {
+    const { n, dirs, L } = polyDirs(sh); const ax = (k) => Math.abs(dirs[k][1]) < 1e-6 || Math.abs(dirs[k][0]) < 1e-6;
+    for (let k = 0; k < n; k++) { if (Math.abs(dirs[k][1]) < 1e-6) add('h', { id: sh.id, i: k }); else if (Math.abs(dirs[k][0]) < 1e-6) add('v', { id: sh.id, i: k }); }
+    for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++) {
+      if (ax(a) || ax(b)) continue;
+      if (Math.abs(V.dot(dirs[a], dirs[b])) < 2e-3) add('perp', { id: sh.id, i: a }, { id: sh.id, i: b });
+      else if (Math.abs(V.cross(dirs[a], dirs[b])) < 2e-3) add('par', { id: sh.id, i: a }, { id: sh.id, i: b });
+    }
+    if (opts.eq !== false) for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++) if (L[a] > 1e-6 && Math.abs(L[a] - L[b]) < 0.03 * Math.max(L[a], L[b])) add('eq', { id: sh.id, i: a }, { id: sh.id, i: b });
+  }
+  if (sh.type === 'circle' && opts.circles !== false) {
+    const others = shapes().filter((o) => o.type === 'circle' && o !== sh);
+    const cc = others.find((o) => V.dist(o.c, sh.c) < snapRadiusW());
+    if (cc) { sh.c = cc.c.slice(); add('conc', { id: cc.id }, { id: sh.id }); }
+    const er = others.filter((o) => Math.abs(o.r - sh.r) < 0.06 * Math.max(o.r, sh.r)).sort((p, q) => Math.abs(p.r - sh.r) - Math.abs(q.r - sh.r))[0];
+    if (er && !cc) { sh.r = er.r; add('eqr', { id: er.id }, { id: sh.id }); }
+  }
+  // keep only automatic relations that tell the solver something new
+  const fresh = rels().filter((q) => !before.has(q.id)); if (!fresh.length) return;
+  const M = buildModel(); const cons = collectConstraints(M, { skipRel: new Set(fresh.map((q) => q.id)) });
+  const basis = []; const h = 1e-7 * M.scale;
+  for (const { row } of jacRows(cons, M.x, h)) gsAdd(basis, row);
+  const drop = new Set();
+  for (const q of fresh) { const rows = jacRows([{ f: relFn(M, q), vars: [...new Set(relShapes(q).flatMap((id) => vRange(M, id)))] }], M.x, h); let added = false; for (const { row } of rows) if (gsAdd(basis, row)) added = true; if (!added) drop.add(q.id); }
+  doc.sketch.rels = rels().filter((q) => !drop.has(q.id));
+}
+function gsAdd(basis, row, commitIt = true) {
+  const w = Float64Array.from(row); for (const b of basis) { let d = 0; for (let j = 0; j < w.length; j++) d += w[j] * b[j]; if (d) for (let j = 0; j < w.length; j++) w[j] -= d * b[j]; }
+  const nr = Math.sqrt(norm2(row)), nw = Math.sqrt(norm2(w)); if (!(nr > 0) || nw <= 1e-6 * nr) return false;
+  if (commitIt) { for (let j = 0; j < w.length; j++) w[j] /= nw; basis.push(w); }
+  return true;
+}
+
+/* =========================================================================
+   Definition analysis: which sizes and positions are fixed
+   ========================================================================= */
+let anaCache = { key: null, A: null };
+function analyzeSketch() {
+  const key = JSON.stringify(doc.sketch); if (anaCache.key === key) return anaCache.A;
+  const A = computeAnalysis(); anaCache = { key, A }; return A;
+}
+function computeAnalysis() {
+  const A = { polys: new Map(), pos: new Map(), circ: new Map(), sugg: new Map(), items: [], need: 0, over: 0, approx: 0, closed: 0, status: 'empty', overKeys: new Set() };
+  const sh = shapes(); if (!sh.length) return A;
+  pruneRels();
+  const calibrated = sketchCalibrated(); const outers = buildRegions(); A.closed = outers.length;
+  const M = buildModel(); const S = M.scale; const h = 1e-7 * S;
+  const cons = collectConstraints(M).sort((a, b) => (a.explicit - b.explicit) || (a.stamp - b.stamp));
+  const basis = [];
+  for (const c of cons) { let added = false; for (const { row } of jacRows([c], M.x, h)) if (gsAdd(basis, row)) added = true; if (!added && c.explicit) A.overKeys.add(c.key); }
+  const grad = (f, ids) => { const vars = [...new Set(ids.flatMap((id) => vRange(M, id)))]; return jacRows([{ f: (x) => [f(x)], vars }], M.x, h)[0].row; };
+  const fixed = (g) => !gsAdd(basis, g, false);
+  // greedy: the next measure that adds information is what is missing
+  const greedy = basis.slice();
+  const take = (g) => gsAdd(greedy, g);
+  const ordered = sh.slice().sort((a, b) => (isClosedShape(b) ? shapeArea(b) : 0) - (isClosedShape(a) ? shapeArea(a) : 0));
+  for (const s of ordered) {
+    const id = s.id; const name = s.type === 'circle' ? (containerOf(s) || doc.sketch.plane ? 'Hole' : 'Circle') : s.closed ? (containerOf(s) ? 'Cutout' : 'Outline') : 'Line';
+    if (s.type === 'poly' && !s.closed) { A.items.push({ lvl: 'info', text: 'Open line is not part of a solid', act: { t: 'del', id }, btn: 'Delete' }); continue; }
+    if (s.type === 'poly' && s.smooth) { A.approx++; A.items.push({ lvl: 'approx', text: `${name} is a freeform curve. Its size comes from your drawing.`, act: { t: 'straighten', id }, btn: 'Straighten' }); }
+    let count = 0; const sugg = [];
+    if (s.type === 'poly' && !s.smooth) {
+      const n = s.pts.length, E = edgeCount(s); const { dirs, L } = polyDirs(s);
+      const lenG = Array.from({ length: E }, (_, k) => grad((x) => { const [a, b] = XE(M, x, id, k); return V.dist(a, b); }, [id]));
+      const cornG = s.pts.map((_, i) => (canAngle(s, i) ? grad((x) => turnAt([XP(M, x, id, (i - 1 + n) % n), XP(M, x, id, i), XP(M, x, id, (i + 1) % n)], 1, 3) * S, [id]) : null));
+      const edges = lenG.map((g, k) => (s.dims[k] != null ? (A.overKeys.has(`d:${id}:${k}`) ? 'over' : 'dim') : fixed(g) ? 'derived' : 'free'));
+      const cornerFree = cornG.map((g) => !!g && !fixed(g));
+      const hot = edges.map((e, k) => e === 'free' || cornerFree[k] || cornerFree[(k + 1) % n]);
+      const pri = (k) => (Math.abs(dirs[k][1]) < 0.01 ? 3 : Math.abs(dirs[k][0]) < 0.01 ? 2 : 1) * 1e6 + L[k];
+      const lenOrder = Array.from({ length: E }, (_, k) => k).sort((a, b) => pri(b) - pri(a));
+      for (const k of lenOrder) if (take(lenG[k])) { count++; sugg.push({ t: 'len', k }); }
+      cornG.forEach((g, i) => { if (g && take(g)) { count++; sugg.push({ t: 'vang', i }); } });
+      const redV = Object.keys(s.vangs || {}).map(Number).filter((i) => A.overKeys.has(`v:${id}:${i}`));
+      A.polys.set(id, { edges, hot, redV, dof: count, suggest: sugg[0] || null });
+      A.need += count;
+      if (count) A.items.push({ lvl: 'need', text: `${name} needs ${plural(count, 'more dimension')}`, act: { t: 'suggest', id }, btn: 'Add' });
+    }
+    if (s.type === 'circle') {
+      const g = grad((x) => 2 * XC(M, x, id).r, [id]); const free = !fixed(g);
+      A.circ.set(id, { diaFree: free && s.dim == null });
+      if (take(g)) { A.need++; A.items.push({ lvl: 'need', text: `${name} diameter is not set`, act: { t: 'dia', id }, btn: 'Add' }); sugg.push({ t: 'dia' }); }
+    }
+    // position relative to the outline it sits in (or the face)
+    let pos = { need: false, have: 0 };
+    if (needsPosition(s)) {
+      const lines = candidateLines(s).map((to) => ({ to, L: refLine(to) })).filter((q) => q.L);
+      let missing = 0;
+      if (lines.length) {
+        const first = lines.slice().sort((a, b) => (Math.abs(a.L.dir[1]) > 0.9 ? 0 : 1) - (Math.abs(b.L.dir[1]) > 0.9 ? 0 : 1))[0];
+        const second = lines.find((q) => Math.abs(V.cross(q.L.dir, first.L.dir)) > 0.2) || null;
+        for (const ln of [first, second]) {
+          if (!ln) { missing++; continue; }
+          const owner = String(ln.to.id).startsWith('ref:') ? [] : [ln.to.id];
+          const g = grad((x) => { const L = XLine(M, x, ln.to); const q = s.type === 'circle' ? XC(M, x, id).c : XP(M, x, id, 0); const u = unitV(L[0], L[1]); return V.cross(u, V.sub(q, L[0])); }, [id, ...owner]);
+          if (take(g)) missing++;
+        }
+      } else missing = 2;
+      pos = { need: true, have: 2 - missing };
+      if (missing) { A.need += missing; A.items.push({ lvl: 'need', text: `${name} position needs ${plural(missing, 'more distance')}`, act: { t: 'pos', id }, btn: 'Add' }); sugg.push({ t: 'pos' }); }
+    }
+    A.pos.set(id, pos); A.sugg.set(id, sugg);
+  }
+  // set twice
+  for (const key of A.overKeys) {
+    const [k, id, a] = key.split(':'); const s = byId(id); A.over++;
+    if (k === 'd') A.items.push({ lvl: 'over', text: `Length ${fmt(s.dims[a])} is already set by other sizes`, act: { t: 'undim', id, k: +a }, btn: 'Remove' });
+    else if (k === 'v') A.items.push({ lvl: 'over', text: `Angle ${fmt(s.vangs[a])}° is already set by other sizes`, act: { t: 'unvang', id, i: +a }, btn: 'Remove' });
+    else if (k === 'c') A.items.push({ lvl: 'over', text: `Diameter ${fmt(s.dim)} is already set by other sizes`, act: { t: 'undia', id }, btn: 'Remove' });
+    else if (k === 'l') A.items.push({ lvl: 'over', text: 'A position distance repeats another one', act: { t: 'unloc1', id, j: +a }, btn: 'Remove' });
+    else if (k === 'r') { const r = rels().find((q) => q.id === id); if (r) A.items.push({ lvl: 'over', text: `${REL[r.type].name} relation repeats what is already set`, act: { t: 'unrel', rel: r.id }, btn: 'Remove' }); }
+    else if (k === 'a') A.items.push({ lvl: 'over', text: 'An edge angle repeats what is already set', act: { t: 'unang', id, k: +a }, btn: 'Remove' });
   }
   if (outers.length > 1 && !doc.sketch.plane) A.items.push({ lvl: 'info', text: `${outers.length} separate outlines. Their spacing comes from your drawing.` });
   if (!calibrated) A.items.unshift({ lvl: 'need', text: 'Not to scale yet. Add any one real dimension.', act: { t: 'guide' }, btn: 'Add' });
@@ -843,6 +1051,7 @@ function drawSketch() {
     if (sh.type === 'circle') { const q = toS(sh.c); c.strokeStyle = tok.muted; c.lineWidth = 1; c.beginPath(); c.moveTo(q[0] - 5, q[1]); c.lineTo(q[0] + 5, q[1]); c.moveTo(q[0], q[1] - 5); c.lineTo(q[0], q[1] + 5); c.stroke(); }
     drawDims(c, sh, P, showMeasure, calibrated);
   }
+  if (['select', 'dim'].includes(tool) || pickRel || (sheetFor && ['edge', 'rel'].includes(sheetFor.kind))) drawRelGlyphs(c);
   // selection & focus overlays
   const hiEdge = (a, b, col, w = 5) => { const p = toS(a), q = toS(b); c.strokeStyle = col; c.globalAlpha = 0.85; c.lineWidth = w; c.beginPath(); c.moveTo(p[0], p[1]); c.lineTo(q[0], q[1]); c.stroke(); c.globalAlpha = 1; };
   if (sel) {
@@ -902,6 +1111,19 @@ function outwardNormal(sh, i) {
   let n = [d[1], -d[0]];
   if (sh.closed) { if (signedArea(sh.pts) < 0) n = [-n[0], -n[1]]; } else n = [-d[1], d[0]];
   return [n[0], -n[1]];
+}
+function drawRelGlyphs(c) {
+  const per = new Map(); let pairNo = 0;
+  for (const r of rels()) {
+    if (!relValid(r)) continue; const num = REL[r.type].kinds.length > 1 ? ++pairNo : 0;
+    for (const ref of [r.a, r.b].filter(Boolean)) {
+      const key = ref.id + ':' + (ref.i ?? 'c'); const k = per.get(key) || 0; per.set(key, k + 1);
+      const sh = byId(ref.id); let at;
+      if (ref.i != null) { const [a, b] = edgePts(sh, ref.i).map(toS); const nn = outwardNormal(sh, ref.i); const d = V.norm(V.sub(b, a)); const mid = V.lerp(a, b, 0.5); at = [mid[0] - nn[0] * 16 + d[0] * (k * 22 - 14), mid[1] - nn[1] * 16 + d[1] * (k * 22 - 14)]; }
+      else { const q = toS(sh.c), rr = sh.r * view.s; at = [q[0] - (rr + 12) * 0.71 - k * 22, q[1] + (rr + 12) * 0.71]; }
+      label(c, at, REL[r.type].g + (num ? String(num) : ''), r.auto ? tok.muted : tok.accent, 0, true, 10, { kind: 'rel', id: ref.id, i: r.id, rel: r.id });
+    }
+  }
 }
 function drawCornerAngle(c, sh, i, text, col, strong) {
   const n = sh.pts.length; const q = toS(sh.pts[i]), a = toS(sh.pts[(i - 1 + n) % n]), b = toS(sh.pts[(i + 1) % n]);
@@ -1217,7 +1439,7 @@ function addOpenWithJoin(sh) {
   for (const idx of [0, pts.length - 1]) { const v = nearestVertex(pts[idx], null, false); if (v) pts[idx] = v.p.slice(); }
   return pushShape({ ...sh, closed: false, pts }, merged ? 'Joined' : null);
 }
-function pushShape(sh, kind) { sh.id = sh.id || uid(); sh.dims = {}; sh.angs = {}; sh.vangs = {}; sh.locs = []; doc.sketch.shapes.push(sh); return kind; }
+function pushShape(sh, kind) { sh.id = sh.id || uid(); sh.dims = {}; sh.angs = {}; sh.vangs = {}; sh.locs = []; doc.sketch.shapes.push(sh); inferRelations(sh); return kind; }
 function finishFreehand(stroke, quiet) {
   const res = recognize(stroke.map(toW)); if (!res) { render(); return; }
   let kind = res.kind;
@@ -1239,25 +1461,10 @@ function scaleSketch(f) {
 }
 function setEdgeDim(sh, i, value) {
   if (!(value > 0)) return 'Enter a length above 0.';
-  const [a, b] = edgePts(sh, i); const cur = V.dist(a, b);
-  if (!sketchCalibrated()) { scaleSketch(value / cur); sh.dims[i] = value; return 'Sketch scaled to real size'; }
-  const prev = sh.dims[i]; sh.dims[i] = value; sh.stamp = sh.stamp || {}; sh.stamp['d' + i] = Date.now();
-  const r = applyDims(sh, i);
-  if (r !== true) { if (prev == null) delete sh.dims[i]; else sh.dims[i] = prev; applyDims(sh, i); return r; }
-  applyAllLocs(); return null;
-}
-function applyDims(sh, anchor, dirOverride = {}) {
-  if (hasVangs(sh)) { const backup = sh.pts.map((q) => q.slice()); const r = solveShape(sh, { dirTarget: dirOverride }); if (r !== true) sh.pts = backup; return r; }
-  const { n, dirs, L } = polyDirs(sh);
-  Object.entries(dirOverride).forEach(([k, d]) => { dirs[+k] = d; });
-  const fixed = new Set(Object.keys(sh.dims).map(Number).filter((k) => k < n));
-  fixed.forEach((k) => (L[k] = sh.dims[k]));
-  if (!sh.closed) { const pts = [sh.pts[0].slice()]; for (let k = 0; k < n; k++) pts.push(V.add(pts[k], V.mul(dirs[k], L[k]))); sh.pts = pts; return true; }
-  if (fixed.size >= n) { const r = closeLoop(dirs, L, new Set()); return r.ok ? 'All sides are already dimensioned. Remove one first.' : 'Those lengths cannot form a closed shape.'; }
-  const r = closeLoop(dirs, L, fixed);
-  if (r.L.some((l, k) => !fixed.has(k) && l < 0.05)) return 'That doesn’t fit with the other dimensions.';
-  sh.pts = rebuildLoop(sh.pts[anchor], anchor, dirs, r.L);
-  return true;
+  const cur = V.dist(...edgePts(sh, i));
+  if (!sketchCalibrated()) { scaleSketch(value / cur); sh.dims[i] = value; stampOf(sh)['d' + i] = Date.now(); solveAll(); return 'Sketch scaled to real size'; }
+  const res = change(() => { sh.dims[i] = value; stampOf(sh)['d' + i] = Date.now(); }, [sh.id], `d:${sh.id}:${i}`, { id: sh.id, edges: [i] });
+  return res.ok ? null : res.msg;
 }
 // Corner angle between the two sides meeting at vertex i, in degrees (inside angle for outlines).
 function turnAt(P, i, n) { const a = P[(i - 1 + n) % n], b = P[i], c = P[(i + 1) % n]; const u = [b[0] - a[0], b[1] - a[1]], v = [c[0] - b[0], c[1] - b[1]]; return Math.atan2(u[0] * v[1] - u[1] * v[0], u[0] * v[0] + u[1] * v[1]); }
@@ -1275,70 +1482,26 @@ function solveLinear(A, b) {
   }
   return M.map((r, i) => r[n] / r[i]);
 }
-// Move the vertices as little as possible so every length, kept direction and corner angle holds (min-norm Newton).
-function solveShape(sh, opt = {}) {
-  const n = sh.pts.length, E = edgeCount(sh); if (n < 2) return true;
-  const { dirs, L } = polyDirs(sh); const rel = releasedEdges(sh); const mL = L.reduce((a, b) => a + b, 0) / Math.max(E, 1) || 1;
-  const sg = sh.closed ? Math.sign(signedArea(sh.pts)) || 1 : 1;
-  const keep = {};
-  for (let k = 0; k < E; k++) {
-    if (opt.dirTarget && opt.dirTarget[k]) keep[k] = opt.dirTarget[k];
-    else if (sh.angs && sh.angs[k] != null) keep[k] = dirs[k];
-    else if (isAxisDir(dirs[k]) && !rel.has(k)) keep[k] = snapDir(dirs[k]);
-  }
-  const P = (x, i) => [x[2 * i], x[2 * i + 1]]; const cons = [];
-  for (const [k, Lk] of Object.entries(sh.dims || {})) { const a = +k; if (a >= E) continue; cons.push((x) => { const p = P(x, a), q = P(x, (a + 1) % n); return Math.hypot(q[0] - p[0], q[1] - p[1]) - Lk; }); }
-  for (const [k, d] of Object.entries(keep)) { const a = +k; cons.push((x) => { const p = P(x, a), q = P(x, (a + 1) % n); return d[0] * (q[1] - p[1]) - d[1] * (q[0] - p[0]); }); }
-  for (const [k, deg] of Object.entries(sh.vangs || {})) {
-    const i = +k; if (!canAngle(sh, i)) continue;
-    const cur = turnAt(sh.pts, i, n); const ext = Math.PI - (deg * Math.PI) / 180; const tau = sh.closed ? sg * ext : (Math.sign(cur) || 1) * ext;
-    cons.push((x) => { const t = turnAt([P(x, (i - 1 + n) % n), P(x, i), P(x, (i + 1) % n)], 1, 3) - tau; return Math.atan2(Math.sin(t), Math.cos(t)) * mL; });
-  }
-  if (!cons.length) return true;
-  let x = sh.pts.flat(); const N = x.length, m = cons.length;
-  const R = (y) => cons.map((f) => f(y)); let r = R(x); let err = Math.max(...r.map(Math.abs)); const tol = 1e-9 * mL;
-  for (let it = 0; it < 100 && err > tol; it++) {
-    const h = 1e-7 * mL; const J = Array.from({ length: m }, () => new Array(N));
-    for (let j = 0; j < N; j++) { const xj = x[j]; x[j] = xj + h; const rp = R(x); x[j] = xj; for (let i = 0; i < m; i++) J[i][j] = (rp[i] - r[i]) / h; }
-    const A = Array.from({ length: m }, (_, i) => Array.from({ length: m }, (_, k) => { let t = 0; for (let j = 0; j < N; j++) t += J[i][j] * J[k][j]; return t; }));
-    const tr = A.reduce((t, row, i) => t + row[i], 0) / m || 1; for (let i = 0; i < m; i++) A[i][i] += 1e-10 * tr;
-    const y = solveLinear(A, r); if (!y) break;
-    const dx = new Array(N).fill(0); for (let j = 0; j < N; j++) { let t = 0; for (let i = 0; i < m; i++) t += J[i][j] * y[i]; dx[j] = -t; }
-    let step = 1, ok = false;
-    for (let ls = 0; ls < 14; ls++) { const xn = x.map((v, j) => v + step * dx[j]); const rn = R(xn); const en = Math.max(...rn.map(Math.abs)); if (en < err) { x = xn; r = rn; err = en; ok = true; break; } step /= 2; }
-    if (!ok) break;
-  }
-  if (err > 1e-5 * mL) return 'Those sizes and angles can’t all be met. Remove one of them.';
-  const pts = []; for (let i = 0; i < n; i++) pts.push(P(x, i));
-  for (let k = 0; k < E; k++) if (V.dist(pts[k], pts[(k + 1) % n]) < 0.05) return 'That doesn’t fit with the other dimensions.';
-  if (sh.closed && (Math.sign(signedArea(pts)) || 1) !== sg) return 'That doesn’t fit with the other dimensions.';
-  sh.pts = pts; return true;
-}
 function setVertexAngle(sh, i, deg) {
   if (!canAngle(sh, i)) return 'Pick a corner where two straight lines meet.';
   const max = sh.closed ? 359 : 179;
   if (!(deg > 0 && deg <= max)) return `Enter an angle from 1° to ${max}°.`;
   if (Math.abs(deg - 180) < 0.01) return 'At 180° the two lines are one straight line.';
-  sh.vangs = sh.vangs || {}; const prev = sh.vangs[i]; const backup = sh.pts.map((q) => q.slice());
-  sh.vangs[i] = deg; sh.stamp = sh.stamp || {}; sh.stamp['v' + i] = Date.now();
-  const r = solveShape(sh);
-  if (r !== true) { if (prev == null) delete sh.vangs[i]; else sh.vangs[i] = prev; sh.pts = backup; return r; }
-  applyAllLocs(); return null;
+  const res = change(() => { sh.vangs = sh.vangs || {}; sh.vangs[i] = deg; stampOf(sh)['v' + i] = Date.now(); }, [sh.id], `v:${sh.id}:${i}`, { id: sh.id, edges: [inEdge(sh, i), i] });
+  return res.ok ? null : res.msg;
 }
 function setEdgeAngle(sh, i, deg) {
   if (!(deg >= 0 && deg <= 180)) return 'Enter an angle from 0 to 180°.';
   const [a, b] = edgePts(sh, i); const cur = Math.atan2(b[1] - a[1], b[0] - a[0]); const r = (deg * Math.PI) / 180;
-  const cands = [r, Math.PI - r, Math.PI + r, -r];
-  const best = cands.reduce((m, x) => { const d = Math.abs(Math.atan2(Math.sin(x - cur), Math.cos(x - cur))); return d < m.d ? { x, d } : m; }, { x: r, d: Infinity }).x;
-  sh.angs = sh.angs || {}; const prev = sh.angs[i]; sh.angs[i] = deg;
-  const res = applyDims(sh, i, { [i]: [Math.cos(best), Math.sin(best)] });
-  if (res !== true) { if (prev == null) delete sh.angs[i]; else sh.angs[i] = prev; return res; }
-  applyAllLocs(); return null;
+  const best = [r, Math.PI - r, Math.PI + r, -r].reduce((m, x) => { const d = Math.abs(Math.atan2(Math.sin(x - cur), Math.cos(x - cur))); return d < m.d ? { x, d } : m; }, { x: r, d: Infinity }).x;
+  const res = change(() => { sh.angs = sh.angs || {}; sh.angd = sh.angd || {}; sh.angs[i] = deg; sh.angd[i] = [Math.cos(best), Math.sin(best)]; stampOf(sh)['a' + i] = Date.now(); }, [sh.id], `a:${sh.id}:${i}`, { id: sh.id, edges: [i] });
+  return res.ok ? null : res.msg;
 }
 function setCircleDim(sh, value) {
   if (!(value > 0)) return 'Enter a diameter above 0.';
-  if (!sketchCalibrated()) { scaleSketch(value / (sh.r * 2)); sh.dim = value; sh.r = value / 2; return 'Sketch scaled to real size'; }
-  sh.dim = value; sh.r = value / 2; return null;
+  if (!sketchCalibrated()) { scaleSketch(value / (sh.r * 2)); sh.dim = value; sh.r = value / 2; stampOf(sh).c = Date.now(); solveAll(); return 'Sketch scaled to real size'; }
+  const res = change(() => { sh.dim = value; stampOf(sh).c = Date.now(); }, [sh.id], `c:${sh.id}`, null);
+  return res.ok ? null : res.msg;
 }
 function suggestLoc(sh) {
   const lines = candidateLines(sh).map((to) => ({ to, L: refLine(to) })).filter((x) => x.L);
@@ -1363,10 +1526,121 @@ function makeLoc(sh, to, anchorPt) {
   const loc = { j, to, side: 1, d: 0 }; const p = locAnchor(sh, loc); const nl = [-L.dir[1], L.dir[0]];
   loc.side = Math.sign(V.dot(V.sub(p, L.a), nl)) || 1; loc.d = Math.abs(locDistance(sh, loc)); return loc;
 }
+// Drag a vertex, a line or a whole shape. Relations hold; the dragged shape's own sizes follow the drag.
+function dragAction(h, p0) {
+  const sh = byId(h.id); if (!sh) return null;
+  const snap = JSON.stringify(doc.sketch); const M = buildModel(); const cons = collectConstraints(M, { follow: new Set([sh.id]) });
+  const T = [];
+  const addPt = (id, i) => { const o = M.off.get(id) + 2 * i; T.push({ j: o, base: M.x[o], ax: 0 }, { j: o + 1, base: M.x[o + 1], ax: 1 }); };
+  const addShape = (q) => { if (q.type === 'circle') { const o = M.off.get(q.id); T.push({ j: o, base: M.x[o], ax: 0 }, { j: o + 1, base: M.x[o + 1], ax: 1 }); } else q.pts.forEach((_, i) => addPt(q.id, i)); };
+  const whole = !(h.kind === 'vertex' || h.kind === 'edge');
+  if (h.kind === 'vertex') addPt(sh.id, h.i);
+  else if (h.kind === 'edge') { addPt(sh.id, h.i); addPt(sh.id, (h.i + 1) % sh.pts.length); }
+  else { addShape(sh); shapes().forEach((q) => { if (q !== sh && !(q.locs || []).length && containerOf(q) === sh) addShape(q); }); }
+  const w0 = toW(p0); let x = Float64Array.from(M.x); let moved = false;
+  const follow = () => {
+    if (sh.type === 'circle') { if (sh.dim != null) sh.dim = sh.r * 2; }
+    else {
+      Object.keys(sh.dims).forEach((k) => { sh.dims[k] = V.dist(...edgePts(sh, +k)); });
+      Object.keys(sh.vangs || {}).forEach((k) => { sh.vangs[k] = cornerAngle(sh, +k); });
+      Object.keys(sh.angs || {}).forEach((k) => { const d = unitV(...edgePts(sh, +k)); sh.angd = sh.angd || {}; sh.angd[k] = d; let deg = (Math.atan2(d[1], d[0]) * 180) / Math.PI; sh.angs[k] = ((deg % 180) + 180) % 180; });
+    }
+    (sh.locs || []).forEach((l) => { const d = locDistance(sh, l); if (d < 0) l.side = -l.side; l.d = Math.abs(d); });
+  };
+  return {
+    move(q) {
+      let d = V.sub(toW(q), w0);
+      if (whole) { const st = gridSteps()[0]; d = [Math.round(d[0] / st) * st, Math.round(d[1] / st) * st]; }
+      x = solveDrag(M, cons, x, T.map((t) => ({ j: t.j, v: t.base + d[t.ax] }))); readBack(M, x); follow(); moved = true; render();
+    },
+    up() {
+      if (!moved) return false;
+      const r1 = (v) => Math.round(v * 10) / 10;
+      if (sh.type === 'circle') { if (sh.dim != null) sh.dim = r1(sh.dim); }
+      else { Object.keys(sh.dims).forEach((k) => (sh.dims[k] = r1(sh.dims[k]))); Object.keys(sh.vangs || {}).forEach((k) => (sh.vangs[k] = r1(sh.vangs[k]))); }
+      (sh.locs || []).forEach((l) => (l.d = r1(l.d)));
+      solveAll(); commit(); render(); return true;
+    },
+    cancel() { restoreSketch(snap); render(); },
+  };
+}
+// Delete one line: an outline opens up; a polyline splits in two.
+function deleteEdge(sh, i) {
+  const n = sh.pts.length; const parts = [];
+  if (sh.closed) { const pts = []; for (let k = 1; k <= n; k++) pts.push(sh.pts[(i + k) % n].slice()); parts.push(pts); }
+  else { parts.push(sh.pts.slice(0, i + 1), sh.pts.slice(i + 1)); }
+  doc.sketch.shapes = shapes().filter((q) => q !== sh);
+  parts.filter((pts) => pts.length >= 2).forEach((pts) => pushShape({ type: 'poly', closed: false, precise: sh.precise, pts }));
+  pruneRels(); solveAll();
+}
+
+// Relations you add yourself
+let pickRel = null;
+function addRelation(type, a, b) {
+  let A = a, B = b; if (type === 'tan' && A && A.i == null) [A, B] = [B, A];
+  const kinds = REL[type].kinds;
+  if (!refOk(A, kinds[0]) || (kinds[1] && !refOk(B, kinds[1]))) { toast(kinds[1] === 'circle' ? 'Pick a circle for that.' : 'Pick a straight line for that.'); return false; }
+  if (kinds[1] && sameRef(A, B)) { toast('Pick a different one.'); return false; }
+  const dup = rels().find((r) => r.type === type && (kinds.length === 1 ? sameRef(r.a, A) : (sameRef(r.a, A) && sameRef(r.b, B)) || (sameRef(r.a, B) && sameRef(r.b, A))));
+  if (dup) { dup.auto = false; commit(); render(); toast(`${REL[type].name} is already there`); return true; }
+  const id = uid();
+  const res = change(() => {
+    if (type === 'h' || type === 'v') doc.sketch.rels = rels().filter((r) => !((r.type === 'h' || r.type === 'v') && sameRef(r.a, A)));
+    rels().push({ id, type, a: A, b: B || undefined, auto: false, t: Date.now() });
+  }, relShapes({ a: A, b: B }), `r:${id}`, { id: A.id, edges: [A.i] });
+  if (!res.ok) { toast(res.msg); return false; }
+  commit(); render(); const note = takeNote(); toast(`${REL[type].name}${note ? ' · ' + note : ''}`, [{ label: 'Undo', fn: undo }]); return true;
+}
+function startRelPick(type, a) {
+  pickRel = { type, a }; closeSheet(); sel = a.i != null ? { kind: 'edge', id: a.id, i: a.i } : { kind: 'shape', id: a.id }; render();
+  const other = REL[type].kinds[1] === 'circle' && a.i != null ? 'circle' : REL[type].kinds[0] === 'edge' && a.i == null ? 'line' : a.i != null ? 'line' : 'circle';
+  toast(`${REL[type].name}: tap the other ${other}`, [{ label: 'Cancel', fn: () => { pickRel = null; sel = null; render(); } }], 30000);
+}
+function relSection(ref) {
+  const kind = ref.i != null ? 'edge' : 'circle';
+  const mine = rels().filter((r) => relValid(r) && (sameRef(r.a, ref) || sameRef(r.b, ref)));
+  const chips = mine.map((r) => `<button class="btn sm" data-relx="${r.id}" aria-label="Remove ${REL[r.type].name}">${REL[r.type].g} ${REL[r.type].name}${r.auto ? ' · auto' : ''} <svg class="i"><use href="#i-x"/></svg></button>`).join('');
+  const types = Object.entries(REL).filter(([, d]) => d.kinds.includes(kind));
+  return `<div class="section-label">Relations</div>${chips ? `<div class="row" style="margin-bottom:8px">${chips}</div>` : '<p class="note">No relations on this one yet.</p>'}
+    <div class="section-label">Add</div><div class="row" style="margin-bottom:12px">${types.map(([t, d]) => `<button class="btn sm" data-reladd="${t}">${d.g} ${d.name}${d.kinds.length > 1 ? '…' : ''}</button>`).join('')}</div>`;
+}
+function wireRelSection(ref, reopen) {
+  sheet.querySelectorAll('[data-relx]').forEach((b) => (b.onclick = () => { doc.sketch.rels = rels().filter((r) => r.id !== b.dataset.relx); commit(); render(); reopen(); }));
+  sheet.querySelectorAll('[data-reladd]').forEach((b) => (b.onclick = () => { const t = b.dataset.reladd; if (REL[t].kinds.length === 1) { addRelation(t, ref); reopen(); } else startRelPick(t, ref); }));
+}
+function openRelSheet(ref) {
+  const sh = byId(ref.id); if (!sh) return; sel = ref.i != null ? { kind: 'edge', id: ref.id, i: ref.i } : { kind: 'shape', id: ref.id }; render();
+  openSheet(`<div class="head"><div><h2>Relations</h2><div class="sub">${ref.i != null ? `Line · ${fmt(V.dist(...edgePts(sh, ref.i)))} mm` : `Circle · Ø${fmt(sh.r * 2)} mm`}</div></div>${closeBtn}</div>
+    <p class="note">Relations keep the shape's intent when sizes change. Tap ✕ to remove one; pick one below to add it, then tap the other line or circle.</p>${relSection(ref)}`, { kind: 'rel' });
+  wireRelSection(ref, () => openRelSheet(ref));
+}
+function openRelInfo(relId) {
+  const r = rels().find((q) => q.id === relId); if (!r) return;
+  openSheet(`<div class="head"><div><h2>${REL[r.type].g} ${REL[r.type].name}</h2><div class="sub">${r.auto ? 'Added automatically when you drew it' : 'Added by you'}</div></div>${closeBtn}</div>
+    <div class="row">${r.auto ? '<button class="btn" id="ri-keep">Keep it</button>' : ''}<button class="btn danger" id="ri-del"><svg class="i"><use href="#i-trash"/></svg>Remove relation</button></div>`, { kind: 'rel' });
+  if ($('#ri-keep')) $('#ri-keep').onclick = () => { r.auto = false; commit(); closeSheet(); render(); toast(`${REL[r.type].name} kept`); };
+  $('#ri-del').onclick = () => { doc.sketch.rels = rels().filter((q) => q !== r); commit(); closeSheet(); render(); toast(`${REL[r.type].name} removed`, [{ label: 'Undo', fn: undo }]); };
+}
+function openEdgeSheet(sh, i) {
+  sel = { kind: 'edge', id: sh.id, i }; render();
+  const len = V.dist(...edgePts(sh, i)); const has = sh.dims[i] != null;
+  openSheet(`<div class="head"><div><h2>Line</h2><div class="sub">${fmt(len)} mm${has ? ' · dimensioned' : ''}</div></div>${closeBtn}</div>
+    <div class="row" style="margin-bottom:12px"><button class="btn" id="e-len">Length…</button><button class="btn" id="e-ang">Angle from horizontal…</button></div>
+    ${relSection({ id: sh.id, i })}
+    <div class="row"><button class="btn danger" id="e-del-line"><svg class="i"><use href="#i-trash"/></svg>Delete this line</button><button class="btn danger" id="e-del-shape">Delete shape</button></div>`, { kind: 'edge', id: sh.id });
+  $('#e-len').onclick = () => editEdge(sh, i); $('#e-ang').onclick = () => editAngle(sh, i);
+  wireRelSection({ id: sh.id, i }, () => openEdgeSheet(byId(sh.id), i));
+  $('#e-del-line').onclick = () => { deleteEdge(sh, i); sel = null; commit(); closeSheet(); render(); toast('Line deleted', [{ label: 'Undo', fn: undo }]); };
+  $('#e-del-shape').onclick = () => { doc.sketch.shapes = shapes().filter((q) => q !== sh); sel = null; pruneRels(); solveAll(); commit(); closeSheet(); render(); toast('Deleted', [{ label: 'Undo', fn: undo }]); };
+}
 function addLoc(sh, loc) {
-  const d = refLine(loc.to).dir;
-  sh.locs = validLocs(sh).filter((l) => Math.abs(V.cross(refLine(l.to).dir, d)) > 0.05); // replace a parallel one
-  sh.locs.push(loc); if (sh.locs.length > 2) sh.locs.shift(); applyLocs(sh);
+  const d = refLine(loc.to).dir; const owner = String(loc.to.id).startsWith('ref:') ? [] : [loc.to.id];
+  let key = null;
+  const res = change(() => {
+    sh.locs = validLocs(sh).filter((l) => Math.abs(V.cross(refLine(l.to).dir, d)) > 0.05); // replace a parallel one
+    sh.locs.push(loc); if (sh.locs.length > 2) sh.locs.shift(); const j = sh.locs.indexOf(loc); stampOf(sh)['l' + j] = Date.now(); key = `l:${sh.id}:${j}`;
+  }, [sh.id, ...owner], null, null);
+  return res.ok ? null : res.msg;
 }
 
 /* =========================================================================
@@ -1384,6 +1658,14 @@ sk.cv.addEventListener('pointerdown', (e) => {
   }
   if (ptrs.size === 2) { if (action && action.cancel) action.cancel(); action = null; startPinch(); return; }
   if (ptrs.size > 2) { pinch = null; return; }
+  if (pickRel) {
+    action = { move() {}, cancel() {}, up(q) {
+      const h = hitTest(q, ['edge', 'circle']); if (!h) return;
+      const ref = h.kind === 'edge' ? { id: h.id, i: h.i } : byId(h.id).type === 'circle' ? { id: h.id } : null; if (!ref) return;
+      const pr = pickRel; pickRel = null; hideToast(); sel = null; addRelation(pr.type, pr.a, ref);
+    } };
+    return;
+  }
   const penErase = e.pointerType === 'pen' && (e.button === 5 || e.button === 2 || (e.buttons & 32) || (e.buttons & 2));
   if (penErase) { action = Tools.erase.down(p, e); return; }
   const panOnly = e.button === 1 || e.button === 2 || (penSeen && e.pointerType === 'touch');
@@ -1466,9 +1748,13 @@ function isScratch(stroke) {
     for (const p of stroke) { const d = p[axis] - anchor; if (dir >= 0 && d < -0.3 * ext) { if (dir > 0) count++; dir = -1; anchor = p[axis]; } else if (dir <= 0 && d > 0.3 * ext) { if (dir < 0) count++; dir = 1; anchor = p[axis]; } else if ((dir > 0 && d > 0) || (dir < 0 && d < 0)) anchor = p[axis]; }
     return count;
   };
-  return Math.max(rev(0, b.w), rev(1, b.h)) >= 3;
+  if (Math.max(rev(0, b.w), rev(1, b.h)) >= 3) return true;
+  // round-and-round scribble
+  if (L < 3.4 * diag) return false;
+  const rs = resample(stroke, 72); let turn = 0; for (let i = 1; i < rs.length - 1; i++) { const u = V.sub(rs[i], rs[i - 1]), v = V.sub(rs[i + 1], rs[i]); turn += Math.abs(Math.atan2(V.cross(u, v), V.dot(u, v))); }
+  return turn > 3.2 * 2 * Math.PI;
 }
-const isRealDim = (h) => { const sh = byId(h.id); if (!sh) return false; return h.kind === 'edge' ? sh.dims[h.i] != null : h.kind === 'dia' ? sh.dim != null : h.kind === 'vang' ? (sh.vangs || {})[h.i] != null : h.kind === 'ang' ? (sh.angs || {})[h.i] != null : true; };
+const isRealDim = (h) => { if (h.kind === 'rel') return rels().some((r) => r.id === h.rel); const sh = byId(h.id); if (!sh) return false; return h.kind === 'edge' ? sh.dims[h.i] != null : h.kind === 'dia' ? sh.dim != null : h.kind === 'vang' ? (sh.vangs || {})[h.i] != null : h.kind === 'ang' ? (sh.angs || {})[h.i] != null : true; };
 const dimKey = (h) => `${h.kind}|${h.id}|${h.i ?? ''}|${h.j ?? ''}`;
 const boxHits = (r, h) => !(h.x1 < r.x0 || h.x0 > r.x1 || h.y1 < r.y0 || h.y0 > r.y1);
 // What a delete gesture over screen rect r would remove: whatever is closest to the gesture's centre
@@ -1542,6 +1828,7 @@ function strikeThrough(stroke) {
   return deleteTargets({ dims: hits, shapes: [] });
 }
 function removeDimHit(h) {
+  if (h.kind === 'rel') { doc.sketch.rels = rels().filter((r) => r.id !== h.rel); return; }
   const sh = byId(h.id); if (!sh) return;
   if (h.kind === 'edge') delete sh.dims[h.i];
   if (h.kind === 'dia') sh.dim = null;
@@ -1550,6 +1837,7 @@ function removeDimHit(h) {
   if (h.kind === 'loc') sh.locs.splice(h.j, 1);
 }
 function editDimHit(h, opts = {}) {
+  if (h.kind === 'rel') return openRelInfo(h.rel);
   const sh = byId(h.id); if (!sh) return;
   if (h.kind === 'edge') editEdge(sh, h.i, opts);
   if (h.kind === 'dia') editCircle(sh, opts);
@@ -1606,9 +1894,17 @@ const Tools = {
   draw: {
     down(p) {
       const t0 = performance.now(); const stroke = [p]; live.ink = stroke; clearTimeout(inkTimer); render();
+      let grab = null, grabHit = null;
+      const lp = setTimeout(() => {
+        if (pathLen(stroke) > 10 || live.handwriting.length) return;
+        const h = hitTest(p, ['vertex', 'circle', 'edge', 'inside']); if (!h) return;
+        live.ink = null; grabHit = h; grab = dragAction(h, p); sel = h; buzz(25); flash('Drag to move · lift to edit'); render();
+      }, 450);
       return {
-        move(q) { stroke.push(q); if (stroke.length % 4 === 0) live.doomed = isScratch(stroke) ? targetsIn(strokeRect(stroke)) : null; render(); },
+        move(q) { if (grab) { grab.move(q); return; } stroke.push(q); if (stroke.length % 4 === 0) live.doomed = isScratch(stroke) ? targetsIn(strokeRect(stroke)) : null; render(); },
         up(q) {
+          clearTimeout(lp);
+          if (grab) { if (!grab.up()) { openSelSheet(grabHit); render(); } return; }
           stroke.push(q); live.ink = null; live.doomed = null;
           if (isTap(p, q, t0)) {
             if (live.handwriting.length && nearInk(q)) { live.handwriting.push([q]); scheduleInk(); render(); return; }
@@ -1620,7 +1916,7 @@ const Tools = {
           flushInk(); const c0 = commits; finishFreehand(stroke);
           lastLine = isStraightStroke(stroke) && commits === c0 + 1 ? { seg: [stroke[0], stroke[stroke.length - 1]], t: performance.now(), n: commits } : null;
         },
-        cancel() { live.ink = null; live.doomed = null; render(); },
+        cancel() { clearTimeout(lp); if (grab) grab.cancel(); live.ink = null; live.doomed = null; render(); },
       };
     },
   },
@@ -1714,29 +2010,11 @@ const Tools = {
         const pan = panAction(p);
         return { move(q) { if (V.dist(p, q) > 6) moved = true; pan.move(q); }, up() { if (!moved) { sel = null; closeSheet(); render(); } else persist(); }, cancel() {} };
       }
-      const sh = byId(h.id); const w0 = toW(p); const snap0 = JSON.stringify(sh);
+      let drag = null;
       return {
-        move(q) {
-          if (!moved && V.dist(p, q) < 7) return; moved = true; sel = h;
-          if (h.kind === 'vertex') {
-            sh.pts[h.i] = snapPoint(q, sh.id).p;
-            const n = edgeCount(sh); [h.i, (h.i - 1 + sh.pts.length) % sh.pts.length].forEach((k) => { if (k < n) { delete sh.dims[k]; delete sh.angs[k]; } });
-            if (sh.vangs) [h.i - 1, h.i, h.i + 1].forEach((k) => delete sh.vangs[(k + sh.pts.length) % sh.pts.length]);
-          } else {
-            const orig = JSON.parse(snap0); const st = gridSteps()[0];
-            let d = V.sub(toW(q), w0); d = [Math.round(d[0] / st) * st, Math.round(d[1] / st) * st];
-            if (sh.type === 'circle') sh.c = V.add(orig.c, d); else sh.pts = orig.pts.map((pt) => V.add(pt, d));
-          }
-          render();
-        },
-        up() {
-          if (moved) {
-            if (h.kind !== 'vertex' && (sh.locs || []).length) { sh.locs = []; toast('Position distances removed because you moved it'); }
-            applyAllLocs(); commit(); render(); return;
-          }
-          sel = h; openSelSheet(sel); render();
-        },
-        cancel() { Object.assign(sh, JSON.parse(snap0)); render(); },
+        move(q) { if (!drag && V.dist(p, q) < 7) return; if (!drag) { drag = dragAction(h, p); sel = h; closeSheet(); } if (drag) drag.move(q); },
+        up() { if (drag && drag.up()) return; sel = h; openSelSheet(h); render(); },
+        cancel() { if (drag) drag.cancel(); },
       };
     },
   },
@@ -1783,7 +2061,7 @@ function processInk() {
   const id = t.sh.id, ei = t.i, isC = t.sh.type === 'circle';
   const acts = [{ label: 'Fix', fn: () => (isC ? editCircle(byId(id), { ink: r }) : editEdge(byId(id), ei, { ink: r })) }];
   if (auto) acts.push({ label: 'Not a number', fn: () => { undo(); asGeometry(); } });
-  toast(`${msg ? msg + ' · ' : ''}${isC ? 'Ø' : ''}${r.text} mm`, acts, 6000);
+  const note = takeNote(); toast(`${msg ? msg + ' · ' : ''}${isC ? 'Ø' : ''}${r.text} mm${note ? ' · ' + note : ''}`, acts, 6000);
 }
 
 /* =========================================================================
@@ -1862,6 +2140,7 @@ function openNumberSheet(o) {
     <div class="fields">${field('num-val', o.label || 'Value', o.value ?? '', o.unit || 'mm', 'big', o.placeholder ?? '')}</div>
     <div class="row">
       <button class="btn primary grow" id="num-apply"><svg class="i"><use href="#i-check"/></svg>Apply</button>
+      ${o.extra ? `<button class="btn" id="num-extra">${esc(o.extra.label)}</button>` : ''}
       ${o.remove ? '<button class="btn danger" id="num-remove">Remove</button>' : ''}
       ${guide.active ? '<button class="btn" id="num-skip">Stop</button>' : ''}
     </div>`, o.ctx || { kind: 'number' });
@@ -1874,17 +2153,18 @@ function openNumberSheet(o) {
     if (res && res.ok === false) { toast(res.msg); return; }
     if (inkRead && inkRead.text !== raw && Digits.learn(inkRead.parts, raw)) toast('Saved your handwriting to read it better next time.');
     commit(); closeSheet(); render();
-    if (res && res.msg) toast(res.msg);
+    const note = takeNote(); if ((res && res.msg) || note) toast([res && res.msg, note].filter(Boolean).join(' · '));
     if (guide.active) setTimeout(guideNext, 220);
   };
   $('#num-apply').onclick = apply; onEnter($('#num-val'), apply);
+  if (o.extra) $('#num-extra').onclick = o.extra.fn;
   const rm = $('#num-remove'); if (rm) rm.onclick = () => { o.remove(); applyAllLocs(); commit(); closeSheet(); render(); };
   const sk2 = $('#num-skip'); if (sk2) sk2.onclick = () => { guide.active = false; openReview(); };
   ensureVisible(focusPoint(focus));
 }
 function editEdge(sh, i, o = {}) {
   if (!sh) return; const [a, b] = edgePts(sh, i); const cur = V.dist(a, b);
-  const st = sh.closed && !sh.smooth ? polyAnalysis(sh).edges[i] : sh.dims[i] != null ? 'dim' : 'free'; const calibrated = sketchCalibrated();
+  const PA = analyzeSketch().polys.get(sh.id); const st = PA ? PA.edges[i] : sh.dims[i] != null ? 'dim' : 'free'; const calibrated = sketchCalibrated();
   const note = !calibrated ? 'First dimension: the whole sketch scales to match it.' : st === 'derived' ? `Already ${fmt(cur)} mm from your other dimensions. Adding it here would set it twice.` : st === 'over' ? 'This length is set twice. Remove it or another one.' : '';
   openNumberSheet({
     title: 'Length', sub: calibrated ? `Now ${fmt(cur)} mm` : 'Sketch is not to scale yet', note, label: 'Length', unit: 'mm',
@@ -1892,6 +2172,7 @@ function editEdge(sh, i, o = {}) {
     focus: { edge: { id: sh.id, i } },
     apply: (v) => { const m = setEdgeDim(sh, i, v); return m && !/scaled/.test(m) ? { ok: false, msg: m } : { ok: true, msg: m }; },
     remove: sh.dims[i] != null ? () => { delete sh.dims[i]; } : null,
+    extra: { label: 'Relations…', fn: () => openRelSheet({ id: sh.id, i }) },
   });
 }
 function editAngle(sh, i) {
@@ -1932,7 +2213,11 @@ function editLoc(sh, loc, o = {}) {
     title: 'Distance from edge', sub: `Now ${fmt(Math.abs(locDistance(sh, loc)))} mm`, note: `From the ${what} to the highlighted edge.`, label: 'Distance', unit: 'mm',
     value: isNew ? '' : fmt(loc.d), placeholder: fmt(Math.abs(locDistance(sh, loc))), allowZero: true,
     guideText: `write the distance from the ${what} to the highlighted edge`, focus: { line: loc.to, point: locAnchor(sh, loc) },
-    apply: (v) => { loc.d = v; if (isNew) addLoc(sh, loc); else applyLocs(sh); return { ok: true }; },
+    apply: (v) => {
+      if (isNew) { loc.d = v; const m = addLoc(sh, loc); return m ? { ok: false, msg: m } : { ok: true }; }
+      const j = sh.locs.indexOf(loc); const owner = String(loc.to.id).startsWith('ref:') ? [] : [loc.to.id];
+      const r = change(() => { loc.d = v; stampOf(sh)['l' + j] = Date.now(); }, [sh.id, ...owner], `l:${sh.id}:${j}`, null); return r.ok ? { ok: true } : r;
+    },
     remove: isNew ? null : () => { sh.locs = sh.locs.filter((l) => l !== loc); },
   });
 }
@@ -1954,14 +2239,18 @@ function runAct(act) {
       const big = shapes().filter((s) => isClosedShape(s) && !(s.type === 'poly' && s.smooth)).sort((a, b) => shapeArea(b) - shapeArea(a))[0];
       if (!big) { guide.active = false; toast('Draw a closed outline first.'); return; }
       if (big.type === 'circle') return editCircle(big);
-      const P = polyAnalysis(big); return P.suggest && P.suggest.t === 'len' ? editEdge(big, P.suggest.k) : editEdge(big, 0);
+      const sg = (analyzeSketch().sugg.get(big.id) || []).find((q) => q.t === 'len'); return editEdge(big, sg ? sg.k : 0);
     }
-    case 'suggest': { const P = polyAnalysis(sh); if (!P.suggest) return guideNext(); return P.suggest.t === 'len' ? editEdge(sh, P.suggest.k) : P.suggest.t === 'vang' ? editVertexAngle(sh, P.suggest.i) : editAngle(sh, P.suggest.k); }
+    case 'suggest': { const sg = (analyzeSketch().sugg.get(sh.id) || [])[0]; if (!sg) return guideNext(); return sg.t === 'len' ? editEdge(sh, sg.k) : sg.t === 'vang' ? editVertexAngle(sh, sg.i) : sg.t === 'dia' ? editCircle(sh) : runAct({ t: 'pos', id: sh.id }); }
     case 'dia': return editCircle(sh);
     case 'pos': { const loc = suggestLoc(sh); if (!loc) { guide.active = false; toast('No straight edge nearby to measure from. Drag the shape into place instead.'); return; } return editLoc(sh, loc, { isNew: true }); }
     case 'undim': delete sh.dims[act.k]; commit(); render(); return openReview();
     case 'unvang': delete sh.vangs[act.i]; commit(); render(); return openReview();
-    case 'unloc': sh.locs = validLocs(sh).slice(0, 1); applyLocs(sh); commit(); render(); return openReview();
+    case 'unloc': sh.locs = validLocs(sh).slice(0, 1); solveAll(); commit(); render(); return openReview();
+    case 'unloc1': sh.locs.splice(act.j, 1); solveAll(); commit(); render(); return openReview();
+    case 'undia': sh.dim = null; commit(); render(); return openReview();
+    case 'unang': delete sh.angs[act.k]; commit(); render(); return openReview();
+    case 'unrel': doc.sketch.rels = rels().filter((q) => q.id !== act.rel); commit(); render(); return openReview();
     case 'del': doc.sketch.shapes = shapes().filter((s) => s !== sh); commit(); render(); return openReview();
     case 'straighten': straighten(sh); commit(); render(); return openReview();
   }
@@ -1974,7 +2263,7 @@ function straighten(sh) {
 function openSelSheet(h) {
   if (!h) { closeSheet(); return; }
   const sh = byId(h.id); if (!sh) return;
-  if (h.kind === 'edge') return editEdge(sh, h.i);
+  if (h.kind === 'edge') return openEdgeSheet(sh, h.i);
   if (h.kind === 'vertex') {
     const p = sh.pts[h.i];
     openSheet(`<div class="head"><div><h2>Point</h2><div class="sub">Position from sketch origin</div></div>${closeBtn}</div>
@@ -1983,10 +2272,10 @@ function openSelSheet(h) {
     const apply = () => { const x = num($('#v-x').value), y = num($('#v-y').value); if (!Number.isFinite(x) || !Number.isFinite(y)) return toast('Enter numbers for X and Y.'); sh.pts[h.i] = [x, y]; const n = edgeCount(sh); [h.i, (h.i - 1 + sh.pts.length) % sh.pts.length].forEach((k) => { if (k < n) { delete sh.dims[k]; delete sh.angs[k]; } }); if (sh.vangs) [h.i - 1, h.i, h.i + 1].forEach((k) => delete sh.vangs[(k + sh.pts.length) % sh.pts.length]); applyAllLocs(); commit(); render(); toast('Point moved'); };
     $('#v-apply').onclick = apply; onEnter($('#v-x'), apply); onEnter($('#v-y'), apply);
     if ($('#v-ang')) $('#v-ang').onclick = () => editVertexAngle(sh, h.i);
-    $('#v-del').onclick = () => { if (sh.pts.length <= (sh.closed ? 3 : 2)) doc.sketch.shapes = shapes().filter((s) => s !== sh); else { sh.pts.splice(h.i, 1); sh.dims = {}; sh.angs = {}; sh.vangs = {}; sh.locs = []; } sel = null; applyAllLocs(); commit(); closeSheet(); render(); };
+    $('#v-del').onclick = () => { if (sh.pts.length <= (sh.closed ? 3 : 2)) doc.sketch.shapes = shapes().filter((s) => s !== sh); else { sh.pts.splice(h.i, 1); sh.dims = {}; sh.angs = {}; sh.vangs = {}; sh.locs = []; doc.sketch.rels = rels().filter((r) => !relShapes(r).includes(sh.id)); inferRelations(sh); } sel = null; applyAllLocs(); commit(); closeSheet(); render(); };
     return;
   }
-  const P = sh.type === 'poly' && !sh.smooth && sh.closed ? polyAnalysis(sh) : null; const pos = posAnalysis(sh);
+  const AA = analyzeSketch(); const P = sh.type === 'poly' && !sh.smooth && sh.closed ? AA.polys.get(sh.id) : null; const pos = AA.pos.get(sh.id) || { need: false, have: 0 };
   const bits = [];
   if (sh.type === 'circle') bits.push(`Ø${fmt(sh.r * 2)} mm`); else { const b = bbox(sh.pts); bits.push(`${fmt(b.w)} × ${fmt(b.h)} mm`); }
   if (P) bits.push(P.dof ? `${plural(P.dof, 'size')} missing` : 'size defined');
@@ -1994,7 +2283,7 @@ function openSelSheet(h) {
   openSheet(`<div class="head"><div><h2>${sh.type === 'circle' ? (pos.need ? 'Hole' : 'Circle') : sh.closed ? 'Outline' : 'Line'}</h2><div class="sub">${bits.join(' · ')}</div></div>${closeBtn}</div>
     <p class="note">Drag to move. Tap an edge or a dimension to change it.${pos.need ? ' In Dimension mode, drag from it to an edge to set a distance.' : ''}</p>
     <div class="row">
-      ${sh.type === 'circle' ? '<button class="btn" id="s-dia">Diameter</button>' : ''}
+      ${sh.type === 'circle' ? '<button class="btn" id="s-dia">Diameter</button><button class="btn" id="s-rel">Relations…</button>' : ''}
       ${pos.need && pos.have < 2 ? '<button class="btn" id="s-pos">Add distance</button>' : ''}
       ${sh.smooth ? '<button class="btn" id="s-straight">Straighten</button>' : ''}
       <button class="btn" id="c-dup"><svg class="i"><use href="#i-copy"/></svg>Copy</button>
@@ -2002,10 +2291,11 @@ function openSelSheet(h) {
     </div>`, { kind: 'shape', id: sh.id });
   const q = (s) => $(s);
   if (q('#s-dia')) q('#s-dia').onclick = () => editCircle(sh);
+  if (q('#s-rel')) q('#s-rel').onclick = () => openRelSheet({ id: sh.id });
   if (q('#s-pos')) q('#s-pos').onclick = () => { const loc = suggestLoc(sh); if (loc) editLoc(sh, loc, { isNew: true }); else toast('No straight edge nearby to measure from.'); };
   if (q('#s-straight')) q('#s-straight').onclick = () => { straighten(sh); commit(); render(); openSelSheet(h); };
   q('#c-del').onclick = () => { doc.sketch.shapes = shapes().filter((s) => s !== sh); sel = null; applyAllLocs(); commit(); closeSheet(); render(); };
-  q('#c-dup').onclick = () => { const cp = JSON.parse(JSON.stringify(sh)); cp.id = uid(); cp.locs = []; const off = gridSteps()[1] / 2; translateShape(cp, [off, 0]); doc.sketch.shapes.push(cp); sel = { kind: 'shape', id: cp.id }; commit(); render(); openSelSheet(sel); };
+  q('#c-dup').onclick = () => { const cp = JSON.parse(JSON.stringify(sh)); cp.id = uid(); cp.locs = []; const off = gridSteps()[1] / 2; translateShape(cp, [off, 0]); doc.sketch.shapes.push(cp); inferRelations(cp); sel = { kind: 'shape', id: cp.id }; commit(); render(); openSelSheet(sel); };
 }
 
 /* =========================================================================
@@ -2597,13 +2887,13 @@ function setMode(m) {
 }
 function updateFab() { const b = $('#btn-review'); b.hidden = mode !== 'sketch' || sheet.classList.contains('open') || !shapes().length; }
 const HINTS = {
-  draw: '<b>Draw</b> shapes, <b>write numbers</b> beside edges, <b>tap</b> an edge or a corner to set a size or angle, <b>scribble or cross out</b> to delete. Two-finger tap = undo.',
+  draw: '<b>Draw</b> shapes, <b>write numbers</b> beside edges, <b>tap</b> an edge or corner for a size or angle, <b>hold</b> anything to move it, <b>scribble or cross out</b> to delete.',
   dim: '<b>Write a number</b> next to a line, or <b>60°</b> in a corner. <b>Drag from one line to the next</b> for the angle between them, or <b>from a hole to an edge</b> for its distance.',
-  select: '<b>Tap</b> a point, edge or shape to edit it. Drag to move. Drag empty paper to pan.',
+  select: '<b>Drag</b> points, lines or shapes to move them; relations (H, V, ∥, ⊥, =) hold. <b>Tap</b> one to edit its size and relations.',
   line: '<b>Drag</b> to draw a straight line. Ends join up; close the loop to make an outline.',
   rect: '<b>Drag</b> from corner to corner. Snaps to the grid.',
   circle: '<b>Drag</b> from the center outward.',
-  erase: '<b>Tap or swipe</b> over a shape to delete it.',
+  erase: '<b>Tap or swipe</b> over a shape or a dimension to delete it. Tap the eraser again to go back.',
 };
 let hintT = 0;
 function showHint(html, ms = 5500) { const p = $('#hint-text'); p.innerHTML = html; p.hidden = sheet.classList.contains('open'); clearTimeout(hintT); hintT = setTimeout(() => { p.hidden = true; }, ms); }
@@ -2619,8 +2909,11 @@ function updateStatus() {
   }[A.status];
   chip.className = 'chip ' + cls; $('#status-text').textContent = text;
 }
+let toolBeforeErase = 'draw';
 function setTool(t) {
+  if (t === 'erase' && tool !== 'erase') toolBeforeErase = tool;
   tool = t; document.querySelectorAll('#tb-sketch [data-tool]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.tool === t));
+  $('#btn-eraser').setAttribute('aria-pressed', t === 'erase'); pickRel = null;
   if (t !== 'select') { sel = null; if (sheetFor && !['review', 'number'].includes(sheetFor.kind)) closeSheet(); }
   flushInk(); showHint(HINTS[t]); render();
 }
@@ -2634,6 +2927,7 @@ $('#status-chip').onclick = () => { flushInk(); openReview(); };
 $('#face-chip').onclick = () => exitFaceSketch();
 $('#btn-undo').onclick = undo; $('#btn-redo').onclick = redo;
 $('#btn-fit').onclick = () => { fitSketch(); render(); persist(); };
+$('#btn-eraser').onclick = () => setTool(tool === 'erase' ? toolBeforeErase : 'erase');
 $('#btn-clear').onclick = () => { if (!shapes().length) return; doc.sketch.shapes = []; sel = null; closeSheet(); commit(); render(); toast('Sketch cleared', [{ label: 'Undo', fn: undo }]); };
 $('#views3d').addEventListener('click', (e) => { const b = e.target.closest('[data-view]'); if (b) setView(b.dataset.view); });
 
@@ -2669,6 +2963,7 @@ function showHelp() {
   <div class="help"><ol>
     <li><b>Draw</b> with your finger. Wobbly lines straighten and snap to 90° and 45°; end where you started to close an outline. Circles inside become holes.</li>
     <li><b>Write a number</b> right next to an edge, e.g. <b>80</b>. The first number scales the whole sketch; later ones reshape it. Or just <b>tap</b> an edge or circle and write or type the size.</li>
+    <li><b>Relations</b> such as horizontal, vertical, parallel, perpendicular and equal are added as you draw. See and edit them in Select mode, or tap a line and choose <b>Relations</b>.</li>
     <li><b>Angles:</b> tap a corner, write the angle with a degree sign inside it (e.g. <b>60°</b>), or in Dimension mode drag from one line to the line it meets.</li>
     <li>Watch the status chip. <b>Amber</b> edges still need a size; grey numbers in brackets are worked out from your other sizes.</li>
     <li>For holes, the app asks for two distances from the outline's edges. In Dimension mode you can also <b>drag from a hole to an edge</b>.</li>
@@ -2678,6 +2973,8 @@ function showHelp() {
   <h3>Gestures</h3>
   <ul>
     <li><b>Scribble</b> back and forth over a shape or a dimension to delete it. It turns red before you lift, so you can see what goes.</li>
+    <li><b>Hold</b> a point, line or shape for a moment, then drag to move it. Lift without moving to edit or delete it.</li>
+    <li>The <b>eraser button</b> on the right edge deletes whatever you touch. Tap it again to go back.</li>
     <li><b>Cross it out</b> with an X (two quick strokes), or <b>strike through</b> a dimension's number with one line.</li>
     <li>With a stylus, hold the <b>pen button</b> (or use the eraser end) to erase whatever you touch.</li>
     <li><b>Two-finger tap</b>: undo. <b>Three-finger tap</b>: redo.</li>
@@ -2743,7 +3040,8 @@ function loadExample() {
   const outline = { id: uid(), type: 'poly', closed: true, pts: [[0, 0], [80, 0], [80, 16], [16, 16], [16, 50], [0, 50]], dims: { 0: 80, 1: 16, 4: 16, 5: 50 }, angs: {}, locs: [] };
   const h1 = { id: uid(), type: 'circle', c: [8, 40], r: 3, dim: 6, dims: {}, angs: {}, locs: [] };
   const h2 = { id: uid(), type: 'circle', c: [66, 8], r: 3, dim: 6, dims: {}, angs: {}, locs: [] };
-  doc.sketch = { shapes: [outline, h1, h2], plane: null, refs: [] }; doc.stash = null;
+  doc.sketch = { shapes: [outline, h1, h2], plane: null, refs: [], rels: [] }; doc.stash = null;
+  inferRelations(outline, { eq: false });
   h1.locs = [makeLoc(h1, { id: outline.id, i: 5 }), makeLoc(h1, { id: outline.id, i: 4 })];
   h2.locs = [makeLoc(h2, { id: outline.id, i: 1 }), makeLoc(h2, { id: outline.id, i: 0 })];
   clearParts(); clearFace();
@@ -2764,7 +3062,7 @@ new ResizeObserver(() => { if (mode === 'sketch') resizeSketch(); }).observe($('
 let saved = null; try { saved = JSON.parse(store.get('napkin.doc.v2') || store.get('napkin.doc.v1') || 'null'); } catch {}
 resizeSketch();
 if (saved && saved.doc) {
-  loadDoc(saved.doc); shapes().forEach((s) => { s.dims = s.dims || {}; s.angs = s.angs || {}; s.vangs = s.vangs || {}; s.locs = s.locs || []; }); if (saved.view) view = saved.view;
+  loadDoc(saved.doc); if (saved.view) view = saved.view;
 } else loadExample();
 try { underlay = JSON.parse(store.get('napkin.underlay.v1') || 'null'); } catch { underlay = null; } loadUnderlayImg();
 hist.cur = serialize(); updateUndo(); updateStatus(); updateFab(); updateFaceChip(); render();
@@ -2772,7 +3070,7 @@ showHint(HINTS.draw, 8000);
 if (!saved) setTimeout(() => toast('Example loaded. Tap ⋯ › New project to start your own.', null, 5000), 600);
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http') && !window.claude && window.top === window.self) navigator.serviceWorker.register('sw.js').catch(() => {});
-window.__napkin = { setVertexAngle, cornerAngle, polyAnalysis, solveShape, editVertexAngle, commit, _T: T, THREE, doc, Digits, recognize, setEdgeDim, buildRegions, analyzeSketch, view: () => view, toS, toW, exportModel, toSTL, runBoolean, computeFace, startFaceSketch, featureFromSketch, openReview, get dimHits() { return dimHits; }, get parts() { return doc.parts; }, get sketch() { return doc.sketch; }, get selFace() { return selFace; }, project(v) { const r = $('#view3d').getBoundingClientRect(); const q = new THREE.Vector3(...v).project(T.camera); return [r.left + (q.x + 1) / 2 * r.width, r.top + (1 - q.y) / 2 * r.height]; } };
+window.__napkin = { setVertexAngle, cornerAngle, solveAll, change, inferRelations, addRelation, dragAction, rels, editVertexAngle, commit, _T: T, THREE, doc, Digits, recognize, setEdgeDim, buildRegions, analyzeSketch, view: () => view, toS, toW, exportModel, toSTL, runBoolean, computeFace, startFaceSketch, featureFromSketch, openReview, get dimHits() { return dimHits; }, get parts() { return doc.parts; }, get sketch() { return doc.sketch; }, get selFace() { return selFace; }, project(v) { const r = $('#view3d').getBoundingClientRect(); const q = new THREE.Vector3(...v).project(T.camera); return [r.left + (q.x + 1) / 2 * r.width, r.top + (1 - q.y) / 2 * r.height]; } };
 </script>
 </body>
 </html>

@@ -19,6 +19,12 @@ Everything runs in the browser, works offline once loaded, and can be installed 
 - **Angles between lines**: tap a corner, write the angle with a degree sign inside it (e.g. `60°`), or in Dimension mode drag from one line to the line it meets. Angles are drawn as arcs; other corners and sizes stay put where they can.
 - Misread number? Tap **Fix** (the app learns your handwriting) or **Not a number** to turn the ink back into lines.
 
+**Relations and moving**
+- Relations are added automatically as you draw: horizontal, vertical, perpendicular/parallel sides on tilted shapes, equal lengths, equal hole sizes, concentric circles. Only ones that add information are kept.
+- See them as small marks (H, V, ∥, ⊥, =, ◎, T) in Select and Dimension mode. Tap a line → **Relations** to add parallel, perpendicular, equal, collinear, tangent, horizontal or vertical (then tap the other line or circle), or tap a mark to remove it.
+- When a dimension or angle you add clashes with an automatic relation, that relation steps aside and the app tells you.
+- **Hold** anything in Draw mode, or drag in Select mode, to move points, lines, holes or whole shapes. Relations hold while you drag; the moved shape's own sizes follow, and holes positioned from an edge move with it.
+
 **Fully-defined check, then confirm**
 - A status chip shows **Not to scale / Needs N dims / Fully defined / Over-defined**. Edges that still need a size are amber; sizes worked out from other dimensions show in grey brackets; duplicates are red.
 - **Review** shows a live 3D preview, what is still missing, and **Add missing dimensions**, which walks you through each one. Nothing becomes 3D until you **Confirm**.
@@ -32,6 +38,7 @@ Everything runs in the browser, works offline once loaded, and can be installed 
 **Gestures**
 - **Scribble** back and forth over a shape or a dimension to delete it; it turns red before you lift.
 - **Cross it out** with an X (two quick strokes), or **strike through** a dimension's number with one line along it.
+- The **eraser button** on the right edge of the canvas erases whatever you touch; tap it again to go back. Hold a shape and lift to get a sheet with **Delete** (or delete just one line).
 - With a stylus, hold the **pen button** (S Pen) or use the **eraser end** to erase whatever you touch, in any tool.
 - Gestures delete what is closest to their centre, so crossing a hole deletes the hole and crossing its number deletes the number.
 - **Two-finger tap** = undo, **three-finger tap** = redo. Pinch to zoom, two fingers to pan. With a stylus, the pen draws and your finger pans.
@@ -69,7 +76,7 @@ When the app is updated, opening it once while online fetches the new version.
 
 - **Shape recognition**: the stroke is resampled, simplified (Ramer–Douglas–Peucker), tested for a circle by radius variance, then edge directions are snapped and the loop is re-closed with a least-squares length adjustment.
 - **Dimensions**: edge directions stay fixed; dimensioned edge lengths are pinned and the remaining edges absorb the change with the smallest weighted adjustment that keeps the outline closed.
-- **Corner angles**: when a shape has corner angles, a small Newton solver moves the vertices as little as possible so every length, kept direction (horizontal/vertical sides) and corner angle holds at once. A corner angle between two square sides lets one of them turn (the non-horizontal one, else the shorter).
-- **Fully defined**: each outline's side lengths and free side directions are unknowns; the closure equation Σ L·d = 0, every length and every corner angle are rows. The rank gives the missing count, a projection test tells which sides are pinned (derived), and a size or angle that adds no rank, in the order you added them, is flagged as set twice. Holes and face features need two distances to non-parallel reference edges.
+- **Constraint engine**: every vertex, circle centre and radius is a variable; lengths, diameters, corner angles, distances to edges and relations are residual equations. A minimum-change Newton solve (or a weighted least-squares solve while dragging) satisfies them all at once.
+- **Fully defined**: the rank of the constraint Jacobian, built in the order constraints were added, shows what is set twice; a greedy pass over candidate sizes (lengths, angles, diameters, positions) finds what is still missing and drives the guided mode.
 - **Sketch on face**: the tapped triangle's coplanar neighbours form the face; their boundary edges become the reference outline in a 2D frame on that plane. The new feature is extruded along the face normal and combined with the part by CSG.
 - **Handwriting**: a $P point-cloud recognizer with built-in digit templates. Strokes are grouped into characters by horizontal overlap; a small low dot is a decimal point. Corrections are stored as personal templates in the browser.
