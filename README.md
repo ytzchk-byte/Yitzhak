@@ -25,6 +25,11 @@ Everything runs in the browser, works offline once loaded, and can be installed 
 - When a dimension or angle you add clashes with an automatic relation, that relation steps aside and the app tells you.
 - **Hold** anything in Draw mode, or drag in Select mode, to move points, lines, holes or whole shapes. Relations hold while you drag; the moved shape's own sizes follow, and holes positioned from an edge move with it.
 
+**Fillets and chamfers**
+- Draw a small **curve across a corner** to round it, or a short **straight cut** to bevel it; the size comes from your stroke and you can change it.
+- Or tap a corner and choose **Fillet…** / **Chamfer…**, or **Round corners…** / **Bevel corners…** on an outline for all of them at once.
+- Sizes refer to the sharp corner (shown dashed), so lengths and angles keep their meaning. Too-large values are refused with the largest size that fits. Rounded and bevelled corners carry into the 3D part.
+
 **Fully-defined check, then confirm**
 - A status chip shows **Not to scale / Needs N dims / Fully defined / Over-defined**. Edges that still need a size are amber; sizes worked out from other dimensions show in grey brackets; duplicates are red.
 - **Review** shows a live 3D preview, what is still missing, and **Add missing dimensions**, which walks you through each one. Nothing becomes 3D until you **Confirm**.

@@ -454,7 +454,9 @@ const Digits = (() => {
     '1': [[[[0.5, 0], [0.5, 1]]], [[[0.32, 0.2], [0.52, 0], [0.52, 1]]], [[[0.32, 0.2], [0.52, 0], [0.52, 1]], [[0.3, 1], [0.72, 1]]]],
     '2': [[arc(0.5, 0.28, 0.3, 0.28, 180, 380).concat([[0.18, 1], [0.84, 1]])], [[[0.2, 0.2], [0.5, 0], [0.8, 0.18], [0.78, 0.42], [0.2, 1], [0.82, 1]]]],
     '3': [[arc(0.48, 0.25, 0.28, 0.25, 200, 450).concat(arc(0.48, 0.75, 0.3, 0.25, 270, 520))], [[[0.2, 0], [0.8, 0], [0.45, 0.42]].concat(arc(0.48, 0.71, 0.3, 0.29, 250, 520))]],
-    '4': [[[[0.62, 0], [0.12, 0.68], [0.88, 0.68]], [[0.66, 0.28], [0.66, 1]]], [[[0.2, 0], [0.2, 0.6], [0.86, 0.6]], [[0.68, 0.04], [0.68, 1]]], [[[0.64, 1], [0.64, 0], [0.12, 0.68], [0.9, 0.68]]]],
+    '4': [[[[0.62, 0], [0.12, 0.68], [0.88, 0.68]], [[0.66, 0.28], [0.66, 1]]], [[[0.2, 0], [0.2, 0.6], [0.86, 0.6]], [[0.68, 0.04], [0.68, 1]]], [[[0.64, 1], [0.64, 0], [0.12, 0.68], [0.9, 0.68]]],
+      // open-top fours: the stem rises to the top (sometimes with a small curl) and comes back down
+      [[[0.2, 0.08], [0.2, 0.42], [0.82, 0.42]], [[0.82, 0], [0.8, 1]]], [[[0.2, 0.08], [0.2, 0.42], [0.82, 0.4], [0.84, 0.12], [0.78, 0], [0.72, 0.05], [0.74, 0.4], [0.7, 1]]], [[[0.2, 0.08], [0.2, 0.42], [0.8, 0.42], [0.8, 0], [0.78, 1]]]],
     '5': [[[[0.8, 0], [0.26, 0]], [[0.26, 0], [0.22, 0.45]].concat(arc(0.48, 0.7, 0.3, 0.3, 215, 520))], [[[0.8, 0], [0.26, 0], [0.22, 0.45]].concat(arc(0.48, 0.7, 0.3, 0.3, 215, 520))], [[[0.26, 0], [0.22, 0.45]].concat(arc(0.48, 0.7, 0.3, 0.3, 215, 520)), [[0.26, 0.02], [0.8, 0]]]],
     '6': [[[[0.72, 0.02], [0.5, 0.1], [0.32, 0.3], [0.22, 0.55]].concat(arc(0.5, 0.72, 0.28, 0.27, 180, 540))], [arc(0.5, 0.72, 0.27, 0.27, 180, 520).concat([[0.3, 0.45], [0.6, 0]])]],
     '7': [[[[0.16, 0], [0.84, 0], [0.38, 1]]], [[[0.16, 0], [0.84, 0], [0.38, 1]], [[0.34, 0.52], [0.78, 0.52]]], [[[0.16, 0.14], [0.16, 0], [0.84, 0], [0.46, 1]]]],
@@ -582,7 +584,7 @@ function loadDoc(d) {
 }
 // Older projects had no relations: square sides were kept implicitly. Give them explicit ones.
 function migrateSketch(sk2) {
-  sk2.shapes.forEach((s) => { s.dims = s.dims || {}; s.angs = s.angs || {}; s.vangs = s.vangs || {}; s.locs = s.locs || []; });
+  sk2.shapes.forEach((s) => { s.dims = s.dims || {}; s.angs = s.angs || {}; s.vangs = s.vangs || {}; s.locs = s.locs || []; s.corners = s.corners || {}; });
   if (Array.isArray(sk2.rels)) return;
   sk2.rels = []; const keep = doc.sketch; doc.sketch = sk2;
   sk2.shapes.forEach((s) => { if (s.type === 'poly' && !s.smooth) inferRelations(s, { eq: false, circles: false }); });
@@ -626,7 +628,7 @@ const byId = (id) => shapes().find((s) => s.id === id);
 function edgeCount(sh) { return sh.type !== 'poly' ? 0 : sh.closed ? sh.pts.length : sh.pts.length - 1; }
 function edgePts(sh, i) { return [sh.pts[i], sh.pts[(i + 1) % sh.pts.length]]; }
 const isClosedShape = (sh) => sh.type === 'circle' || (sh.closed && sh.pts.length >= 3);
-const shapeOutline = (sh) => sh.type === 'circle' ? Array.from({ length: 48 }, (_, k) => [sh.c[0] + sh.r * Math.cos((k / 48) * Math.PI * 2), sh.c[1] + sh.r * Math.sin((k / 48) * Math.PI * 2)]) : sh.pts;
+const shapeOutline = (sh) => sh.type === 'circle' ? Array.from({ length: 48 }, (_, k) => [sh.c[0] + sh.r * Math.cos((k / 48) * Math.PI * 2), sh.c[1] + sh.r * Math.sin((k / 48) * Math.PI * 2)]) : treatedPts(sh);
 const shapeArea = (sh) => sh.type === 'circle' ? Math.PI * sh.r * sh.r : Math.abs(signedArea(sh.pts));
 function anyDims() { return shapes().some((s) => (s.type === 'circle' ? s.dim != null : Object.keys(s.dims || {}).length > 0) || (s.locs || []).length); }
 function sketchCalibrated() { return !!doc.sketch.plane || anyDims() || shapes().some((s) => s.precise); }
@@ -693,6 +695,65 @@ const hasVangs = (sh) => !!(sh.vangs && Object.keys(sh.vangs).length);
 const canAngle = (sh, i) => sh.type === 'poly' && !sh.smooth && (sh.closed ? sh.pts.length >= 3 : i > 0 && i < sh.pts.length - 1);
 const inEdge = (sh, i) => (sh.closed ? (i - 1 + sh.pts.length) % sh.pts.length : i - 1);
 const stampOf = (sh) => (sh.stamp = sh.stamp || {});
+
+/* Corner treatments: fillets (round) and chamfers (bevel). Sizes refer to the sharp corner, as on a drawing. */
+const hasCorner = (sh, i) => !!(sh.corners && sh.corners[i]);
+function cornerRays(sh, i) {
+  const n = sh.pts.length; const b = sh.pts[i], a = sh.pts[(i - 1 + n) % n], c = sh.pts[(i + 1) % n];
+  const u = V.norm(V.sub(a, b)), v = V.norm(V.sub(c, b)); return { a, b, c, u, v, th: Math.acos(clamp(V.dot(u, v), -1, 1)) };
+}
+function cornerT(sh, i, spec = sh.corners && sh.corners[i]) {
+  if (!spec || !canAngle(sh, i)) return 0; const { th } = cornerRays(sh, i); if (th < 1e-3 || th > Math.PI - 1e-3) return 0;
+  return spec.t === 'f' ? spec.v / Math.tan(th / 2) : spec.v;
+}
+// Per vertex: where the treatment starts and ends on each side, and the points that replace the sharp corner.
+function cornerGeom(sh) {
+  const n = sh.pts.length, E = edgeCount(sh); const want = sh.pts.map((_, i) => cornerT(sh, i));
+  const L = Array.from({ length: E }, (_, k) => V.dist(...edgePts(sh, k)));
+  const tEff = want.map((t, i) => {
+    if (!t) return 0; let lim = t;
+    for (const [e, o] of [[inEdge(sh, i), (i - 1 + n) % n], [i < E ? i : -1, (i + 1) % n]]) { if (e < 0) continue; const w = want[o] || 0; lim = Math.min(lim, t + w > L[e] ? (L[e] * t) / (t + w) : t); }
+    return lim;
+  });
+  return sh.pts.map((b, i) => {
+    const t = tEff[i]; if (!t) return { p1: b, p2: b, pts: [b] };
+    const { u, v, th } = cornerRays(sh, i); const spec = sh.corners[i]; const clamped = t < want[i] - 1e-6;
+    const p1 = V.add(b, V.mul(u, t)), p2 = V.add(b, V.mul(v, t)); const bis = V.norm(V.add(u, v));
+    if (spec.t === 'c') return { p1, p2, pts: [p1, p2], clamped, spec, t, bis, mid: V.lerp(p1, p2, 0.5) };
+    const r = t * Math.tan(th / 2); const cen = V.add(b, V.mul(bis, r / Math.sin(th / 2)));
+    const a0 = Math.atan2(p1[1] - cen[1], p1[0] - cen[0]), a1 = Math.atan2(p2[1] - cen[1], p2[0] - cen[0]);
+    const d = Math.atan2(Math.sin(a1 - a0), Math.cos(a1 - a0)); const seg = Math.max(2, Math.ceil(Math.abs(d) / (Math.PI / 24)));
+    const pts = Array.from({ length: seg + 1 }, (_, k) => [cen[0] + r * Math.cos(a0 + (d * k) / seg), cen[1] + r * Math.sin(a0 + (d * k) / seg)]);
+    return { p1, p2, pts, clamped, spec, t, bis, r, mid: V.sub(cen, V.mul(bis, r)) };
+  });
+}
+function treatedPts(sh) { if (sh.type !== 'poly' || !sh.corners || !Object.keys(sh.corners).length) return sh.pts; return cornerGeom(sh).flatMap((g) => g.pts); }
+function cornerMax(sh, i, type) {
+  const n = sh.pts.length, E = edgeCount(sh); const { th } = cornerRays(sh, i); let avail = Infinity;
+  for (const [e, o] of [[inEdge(sh, i), (i - 1 + n) % n], [i < E ? i : -1, (i + 1) % n]]) { if (e >= 0) avail = Math.min(avail, V.dist(...edgePts(sh, e)) - cornerT(sh, o)); }
+  avail = Math.max(0, avail); return type === 'f' ? avail * Math.tan(th / 2) : avail;
+}
+const cornerText = (sh, i) => { const c = sh.corners[i]; if (c.t === 'f') return `R${fmt(c.v)}`; const { th } = cornerRays(sh, i); return Math.abs(th - Math.PI / 2) < 0.01 ? `${fmt(c.v)}×45°` : `C${fmt(c.v)}`; };
+function setCorner(sh, i, type, v) {
+  if (!canAngle(sh, i)) return 'Pick a corner where two straight lines meet.';
+  if (!(v > 0)) return 'Enter a size above 0.';
+  if (cornerRays(sh, i).th > Math.PI - 0.01) return 'That corner is straight.';
+  const mx = cornerMax(sh, i, type); if (v > mx + 1e-6) return `Too big for this corner. At most ${type === 'f' ? 'R' : ''}${fmt(Math.floor(mx * 10 + 1e-6) / 10)}.`;
+  sh.corners = sh.corners || {}; sh.corners[i] = { t: type, v }; return null;
+}
+function setAllCorners(sh, type, v) {
+  const idx = sh.pts.map((_, i) => i).filter((i) => canAngle(sh, i) && cornerRays(sh, i).th < Math.PI - 0.01);
+  if (!idx.length) return 'This shape has no corners to treat.';
+  const keep = JSON.stringify(sh.corners || {}); sh.corners = sh.corners || {};
+  idx.forEach((i) => (sh.corners[i] = { t: type, v }));
+  if (cornerGeom(sh).some((g) => g.clamped)) {
+    let mx = Infinity; const n = sh.pts.length;
+    const k = (q) => (sh.corners[q] ? (type === 'f' ? 1 / Math.tan(cornerRays(sh, q).th / 2) : 1) : 0);
+    for (let e = 0; e < edgeCount(sh); e++) { const den = k(e) + k((e + 1) % n); if (den) mx = Math.min(mx, V.dist(...edgePts(sh, e)) / den); }
+    sh.corners = JSON.parse(keep); return `Too big for the shortest side. At most ${type === 'f' ? 'R' : ''}${fmt(Math.floor(mx * 10 + 1e-6) / 10)}.`;
+  }
+  return null;
+}
 
 /* =========================================================================
    Constraint engine: sizes, angles, positions and relations solved together
@@ -1037,17 +1098,30 @@ function drawSketch() {
     const P = A.polys.get(sh.id); const pos = A.pos.get(sh.id);
     c.lineJoin = 'round'; c.lineCap = 'round';
     if (sh.type === 'poly' && !sh.smooth && P && calibrated && !selected) {
+      const G = cornerGeom(sh);
       for (let i = 0; i < edgeCount(sh); i++) {
-        const [a, b] = edgePts(sh, i).map(toS); const st = P.edges[i]; const hot = P.hot[i];
+        const a = toS(G[i].p2), b = toS(G[(i + 1) % sh.pts.length].p1); const st = P.edges[i]; const hot = P.hot[i];
         c.strokeStyle = hot ? tok.warn : st === 'over' ? tok.danger : tok.ink; c.lineWidth = hot ? 2.5 : 2;
         c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]); c.stroke();
       }
+      c.strokeStyle = tok.ink; c.lineWidth = 2;
+      G.forEach((g) => { if (g.pts.length < 2) return; c.beginPath(); g.pts.forEach((q, k) => { const z = toS(q); k ? c.lineTo(z[0], z[1]) : c.moveTo(z[0], z[1]); }); c.stroke(); });
     } else {
       const under = calibrated && sh.type === 'circle' && (sh.dim == null || (pos && pos.need && pos.have < 2));
       c.beginPath(); addPath(c, sh);
       c.strokeStyle = selected ? tok.accent : under ? tok.warn : tok.ink; c.lineWidth = selected ? 3 : under ? 2.5 : 2; c.stroke();
     }
-    if (sh.type === 'poly' && !sh.smooth) { c.fillStyle = tok.ink; sh.pts.forEach((p) => { const q = toS(p); c.beginPath(); c.arc(q[0], q[1], 2.6, 0, Math.PI * 2); c.fill(); }); }
+    if (sh.type === 'poly' && !sh.smooth) {
+      const G = hasAnyCorner(sh) ? cornerGeom(sh) : null;
+      sh.pts.forEach((p, i) => {
+        const q = toS(p);
+        if (G && G[i].pts.length > 1) { // the sharp corner the sizes refer to
+          const a = toS(G[i].p1), b = toS(G[i].p2); c.strokeStyle = tok.muted; c.lineWidth = 1; c.setLineDash([3, 3]); c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(q[0], q[1]); c.lineTo(b[0], b[1]); c.stroke(); c.setLineDash([]);
+          c.beginPath(); c.arc(q[0], q[1], 2.6, 0, Math.PI * 2); c.stroke(); return;
+        }
+        c.fillStyle = tok.ink; c.beginPath(); c.arc(q[0], q[1], 2.6, 0, Math.PI * 2); c.fill();
+      });
+    }
     if (sh.type === 'circle') { const q = toS(sh.c); c.strokeStyle = tok.muted; c.lineWidth = 1; c.beginPath(); c.moveTo(q[0] - 5, q[1]); c.lineTo(q[0] + 5, q[1]); c.moveTo(q[0], q[1] - 5); c.lineTo(q[0], q[1] + 5); c.stroke(); }
     drawDims(c, sh, P, showMeasure, calibrated);
   }
@@ -1092,9 +1166,10 @@ function drawSketch() {
     c.restore();
   }
 }
+const hasAnyCorner = (sh) => !!(sh.corners && Object.keys(sh.corners).length);
 function addPath(c, sh) {
   if (sh.type === 'circle') { const q = toS(sh.c); c.moveTo(q[0] + sh.r * view.s, q[1]); c.arc(q[0], q[1], sh.r * view.s, 0, Math.PI * 2); return; }
-  sh.pts.forEach((p, i) => { const q = toS(p); i ? c.lineTo(q[0], q[1]) : c.moveTo(q[0], q[1]); });
+  treatedPts(sh).forEach((p, i) => { const q = toS(p); i ? c.lineTo(q[0], q[1]) : c.moveTo(q[0], q[1]); });
   if (sh.closed) c.closePath();
 }
 function label(c, at, text, color, angle = 0, bg = true, size = 12, hit = null) {
@@ -1177,6 +1252,10 @@ function drawDims(c, sh, P, showMeasure, calibrated) {
       if (has) drawCornerAngle(c, sh, i, `${fmt(sh.vangs[i])}°`, P && P.redV.includes(i) ? tok.danger : tok.markup, true);
       else if (tool === 'dim') { const th = cornerAngle(sh, i); if (Math.abs(((th % 90) + 90) % 90) > 0.5 && Math.abs(((th % 90) + 90) % 90 - 90) > 0.5) drawCornerAngle(c, sh, i, `(${fmt(Math.round(th * 10) / 10)}°)`, tok.muted, false); }
     }
+    if (hasAnyCorner(sh)) cornerGeom(sh).forEach((g, i) => {
+      if (!g.spec) return; const m = toS(g.mid); const d = [-g.bis[0], g.bis[1]];
+      label(c, [m[0] + d[0] * 16, m[1] + d[1] * 16], cornerText(sh, i), g.clamped ? tok.danger : tok.markup, 0, true, 11, { kind: 'corner', id: sh.id, i });
+    });
     for (const k of Object.keys(sh.angs || {}).map(Number)) {
       if (k >= n) continue; const [aw, bw] = edgePts(sh, k); const a = toS(aw), b = toS(bw); const d = V.norm(V.sub(b, a));
       label(c, [a[0] + d[0] * 26 - d[1] * 14, a[1] + d[1] * 26 + d[0] * 14], `∠${fmt(sh.angs[k])}°`, tok.markup, 0, true, 11, { kind: 'ang', id: sh.id, i: k });
@@ -1439,7 +1518,7 @@ function addOpenWithJoin(sh) {
   for (const idx of [0, pts.length - 1]) { const v = nearestVertex(pts[idx], null, false); if (v) pts[idx] = v.p.slice(); }
   return pushShape({ ...sh, closed: false, pts }, merged ? 'Joined' : null);
 }
-function pushShape(sh, kind) { sh.id = sh.id || uid(); sh.dims = {}; sh.angs = {}; sh.vangs = {}; sh.locs = []; doc.sketch.shapes.push(sh); inferRelations(sh); return kind; }
+function pushShape(sh, kind) { sh.id = sh.id || uid(); sh.dims = {}; sh.angs = {}; sh.vangs = {}; sh.locs = []; sh.corners = {}; doc.sketch.shapes.push(sh); inferRelations(sh); return kind; }
 function finishFreehand(stroke, quiet) {
   const res = recognize(stroke.map(toW)); if (!res) { render(); return; }
   let kind = res.kind;
@@ -1455,7 +1534,7 @@ function scaleSketch(f) {
   const all = shapes().flatMap((s) => (s.type === 'circle' ? [s.c] : s.pts)); if (!all.length) return;
   const b = bbox(all), c = [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2];
   const sp = (p) => V.add(c, V.mul(V.sub(p, c), f));
-  for (const s of shapes()) { if (s.type === 'circle') { s.c = sp(s.c); s.r *= f; } else s.pts = s.pts.map(sp); }
+  for (const s of shapes()) { if (s.type === 'circle') { s.c = sp(s.c); s.r *= f; } else { s.pts = s.pts.map(sp); Object.values(s.corners || {}).forEach((q) => (q.v *= f)); } }
   if (underlay) { const p = sp([underlay.x, underlay.y]); underlay.x = p[0]; underlay.y = p[1]; underlay.w *= f; underlay.h *= f; saveUnderlay(); }
   const vc = sp([view.cx, view.cy]); view.cx = vc[0]; view.cy = vc[1]; view.s /= f;
 }
@@ -1754,7 +1833,7 @@ function isScratch(stroke) {
   const rs = resample(stroke, 72); let turn = 0; for (let i = 1; i < rs.length - 1; i++) { const u = V.sub(rs[i], rs[i - 1]), v = V.sub(rs[i + 1], rs[i]); turn += Math.abs(Math.atan2(V.cross(u, v), V.dot(u, v))); }
   return turn > 3.2 * 2 * Math.PI;
 }
-const isRealDim = (h) => { if (h.kind === 'rel') return rels().some((r) => r.id === h.rel); const sh = byId(h.id); if (!sh) return false; return h.kind === 'edge' ? sh.dims[h.i] != null : h.kind === 'dia' ? sh.dim != null : h.kind === 'vang' ? (sh.vangs || {})[h.i] != null : h.kind === 'ang' ? (sh.angs || {})[h.i] != null : true; };
+const isRealDim = (h) => { if (h.kind === 'rel') return rels().some((r) => r.id === h.rel); const sh = byId(h.id); if (!sh) return false; return h.kind === 'edge' ? sh.dims[h.i] != null : h.kind === 'dia' ? sh.dim != null : h.kind === 'vang' ? (sh.vangs || {})[h.i] != null : h.kind === 'ang' ? (sh.angs || {})[h.i] != null : h.kind === 'corner' ? hasCorner(sh, h.i) : true; };
 const dimKey = (h) => `${h.kind}|${h.id}|${h.i ?? ''}|${h.j ?? ''}`;
 const boxHits = (r, h) => !(h.x1 < r.x0 || h.x0 > r.x1 || h.y1 < r.y0 || h.y0 > r.y1);
 // What a delete gesture over screen rect r would remove: whatever is closest to the gesture's centre
@@ -1762,7 +1841,7 @@ const boxHits = (r, h) => !(h.x1 < r.x0 || h.x0 > r.x1 || h.y1 < r.y0 || h.y0 > 
 function targetsIn(r) {
   const c = [(r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2]; const cands = [];
   const boxDist = (b) => Math.hypot(Math.max(b.x0 - c[0], 0, c[0] - b.x1), Math.max(b.y0 - c[1], 0, c[1] - b.y1));
-  for (const h of dimHits) if (boxHits(r, h.tight) && isRealDim(h)) cands.push({ dim: h, d: boxDist(h.tight) + 0.5 });
+  for (const h of dimHits) if (boxHits(r, h.tight) && isRealDim(h)) cands.push({ dim: h, d: boxDist(h.tight) + 0.5 + 0.001 * Math.hypot(c[0] - h.cx, c[1] - h.cy) });
   const inR = (q) => q[0] > r.x0 && q[0] < r.x1 && q[1] > r.y0 && q[1] < r.y1;
   for (const sh of shapes()) {
     if (sh.type === 'circle') { const q = toS(sh.c), rr = sh.r * view.s; if (inR(q) || shapeOutline(sh).some((p) => inR(toS(p)))) cands.push({ shape: sh, d: Math.max(0, V.dist(c, q) - rr) }); continue; }
@@ -1772,7 +1851,7 @@ function targetsIn(r) {
   }
   if (!cands.length) return { dims: [], shapes: [] };
   cands.sort((a, b) => a.d - b.d); const best = cands[0]; const kind = best.dim ? 'dim' : 'shape';
-  const pick = cands.filter((k) => (k.dim ? 'dim' : 'shape') === kind && k.d <= best.d + 6);
+  const pick = kind === 'dim' ? [best] : cands.filter((k) => !k.dim && k.d <= best.d + 6); // one number at a time
   return kind === 'dim' ? { dims: pick.map((k) => k.dim), shapes: [] } : { dims: [], shapes: pick.map((k) => k.shape) };
 }
 function deleteTargets(T) {
@@ -1827,6 +1906,37 @@ function strikeThrough(stroke) {
   for (const sh of shapes()) { if (sh.type !== 'poly') continue; for (let i = 0; i < edgeCount(sh); i++) { const [p, q] = edgePts(sh, i).map(toS); if (segsCross(a, b, p, q)) return false; } }
   return deleteTargets({ dims: hits, shapes: [] });
 }
+// Gesture: a small curve across a corner rounds it; a short straight cut bevels it.
+function cornerGesture(stroke) {
+  const a = stroke[0], b = stroke[stroke.length - 1]; if (V.dist(a, b) < 10) return false;
+  let best = null;
+  for (const sh of shapes()) {
+    if (sh.type !== 'poly' || sh.smooth) continue; const n = sh.pts.length;
+    for (let i = 0; i < n; i++) {
+      if (!canAngle(sh, i)) continue;
+      const B = toS(sh.pts[i]), A = toS(sh.pts[(i - 1 + n) % n]), C = toS(sh.pts[(i + 1) % n]);
+      for (const [p, q] of [[a, b], [b, a]]) {
+        const d1 = distToSeg(p, B, A), d2 = distToSeg(q, B, C), t1 = V.dist(B, p), t2 = V.dist(B, q);
+        if (d1 < 16 && d2 < 16 && t1 > 6 && t2 > 6 && t1 < 0.55 * V.dist(A, B) && t2 < 0.55 * V.dist(B, C) && (!best || d1 + d2 < best.d)) best = { d: d1 + d2, sh, i, p, q };
+      }
+    }
+  }
+  if (!best) return false;
+  const B = toS(best.sh.pts[best.i]); const reach = Math.max(V.dist(B, best.p), V.dist(B, best.q)) * 1.3 + 6;
+  if (stroke.some((pt) => V.dist(pt, B) > reach)) return false;
+  const { sh, i } = best; const { b: bw, u, v, th } = cornerRays(sh, i); if (th > Math.PI - 0.05) return false;
+  const t = (Math.max(0, V.dot(V.sub(toW(best.p), bw), u)) + Math.max(0, V.dot(V.sub(toW(best.q), bw), v))) / 2;
+  const chord = V.dist(a, b); const bulge = stroke.reduce((m, pt) => Math.max(m, distToSeg(pt, a, b)), 0);
+  const type = bulge > 0.1 * chord ? 'f' : 'c';
+  let val = type === 'f' ? t * Math.tan(th / 2) : t;
+  if (sketchCalibrated()) { const st = val >= 5 ? 0.5 : 0.1; val = Math.max(st, Math.round(val / st) * st); }
+  const prev = sh.corners && sh.corners[i]; if (prev) delete sh.corners[i];
+  const mx = cornerMax(sh, i, type); if (val > mx) val = Math.floor(mx * 10) / 10;
+  const m = setCorner(sh, i, type, val); if (m) { if (prev) sh.corners[i] = prev; toast(m); render(); return true; }
+  commit(); render(); buzz(12); const id = sh.id;
+  toast(`${type === 'f' ? 'Fillet R' : 'Chamfer '}${fmt(val)}`, [{ label: 'Change', fn: () => editCornerTreat(byId(id), i, type) }, { label: 'Undo', fn: undo }], 6000);
+  return true;
+}
 function removeDimHit(h) {
   if (h.kind === 'rel') { doc.sketch.rels = rels().filter((r) => r.id !== h.rel); return; }
   const sh = byId(h.id); if (!sh) return;
@@ -1834,6 +1944,7 @@ function removeDimHit(h) {
   if (h.kind === 'dia') sh.dim = null;
   if (h.kind === 'ang') delete sh.angs[h.i];
   if (h.kind === 'vang') delete sh.vangs[h.i];
+  if (h.kind === 'corner' && sh.corners) delete sh.corners[h.i];
   if (h.kind === 'loc') sh.locs.splice(h.j, 1);
 }
 function editDimHit(h, opts = {}) {
@@ -1843,6 +1954,7 @@ function editDimHit(h, opts = {}) {
   if (h.kind === 'dia') editCircle(sh, opts);
   if (h.kind === 'ang') editAngle(sh, h.i, opts);
   if (h.kind === 'vang') editVertexAngle(sh, h.i, opts);
+  if (h.kind === 'corner' && hasCorner(sh, h.i)) editCornerTreat(sh, h.i, sh.corners[h.i].t, opts);
   if (h.kind === 'loc') editLoc(sh, sh.locs[h.j], opts);
 }
 // Tap in Draw/Dimension: edit the dimension or entity under the finger.
@@ -1911,7 +2023,7 @@ const Tools = {
             flushInk(); if (!tapEdit(q)) render(); return;
           }
           if (isScratch(stroke)) { live.handwriting = []; clearTimeout(inkTimer); scratchDelete(stroke); return; }
-          if (!live.handwriting.length && (crossOut(stroke) || strikeThrough(stroke))) return;
+          if (!live.handwriting.length && (crossOut(stroke) || strikeThrough(stroke) || cornerGesture(stroke))) return;
           if (looksLikeNumber(stroke)) { live.handwriting.push(stroke); live.inkSource = 'auto'; scheduleInk(); render(); return; }
           flushInk(); const c0 = commits; finishFreehand(stroke);
           lastLine = isStraightStroke(stroke) && commits === c0 + 1 ? { seg: [stroke[0], stroke[stroke.length - 1]], t: performance.now(), n: commits } : null;
@@ -2140,7 +2252,7 @@ function openNumberSheet(o) {
     <div class="fields">${field('num-val', o.label || 'Value', o.value ?? '', o.unit || 'mm', 'big', o.placeholder ?? '')}</div>
     <div class="row">
       <button class="btn primary grow" id="num-apply"><svg class="i"><use href="#i-check"/></svg>Apply</button>
-      ${o.extra ? `<button class="btn" id="num-extra">${esc(o.extra.label)}</button>` : ''}
+      ${[...(o.extra ? [o.extra] : []), ...(o.extras || [])].map((x, k) => `<button class="btn" data-extra="${k}">${esc(x.label)}</button>`).join('')}
       ${o.remove ? '<button class="btn danger" id="num-remove">Remove</button>' : ''}
       ${guide.active ? '<button class="btn" id="num-skip">Stop</button>' : ''}
     </div>`, o.ctx || { kind: 'number' });
@@ -2157,7 +2269,7 @@ function openNumberSheet(o) {
     if (guide.active) setTimeout(guideNext, 220);
   };
   $('#num-apply').onclick = apply; onEnter($('#num-val'), apply);
-  if (o.extra) $('#num-extra').onclick = o.extra.fn;
+  const extras = [...(o.extra ? [o.extra] : []), ...(o.extras || [])]; sheet.querySelectorAll('[data-extra]').forEach((b) => (b.onclick = extras[+b.dataset.extra].fn));
   const rm = $('#num-remove'); if (rm) rm.onclick = () => { o.remove(); applyAllLocs(); commit(); closeSheet(); render(); };
   const sk2 = $('#num-skip'); if (sk2) sk2.onclick = () => { guide.active = false; openReview(); };
   ensureVisible(focusPoint(focus));
@@ -2193,6 +2305,30 @@ function editVertexAngle(sh, i, o = {}) {
     guideText: 'set the angle between the highlighted lines', focus: { corner: { id: sh.id, i } },
     apply: (v) => { const m = setVertexAngle(sh, i, v); return m ? { ok: false, msg: m } : { ok: true }; },
     remove: has ? () => { delete sh.vangs[i]; } : null,
+    extras: [{ label: 'Fillet…', fn: () => editCornerTreat(sh, i, 'f') }, { label: 'Chamfer…', fn: () => editCornerTreat(sh, i, 'c') }],
+  });
+}
+function editCornerTreat(sh, i, type, o = {}) {
+  if (!sh || !canAngle(sh, i)) return; const f = type === 'f';
+  const cur = hasCorner(sh, i) && sh.corners[i].t === type ? sh.corners[i].v : null;
+  const keep = sh.corners && sh.corners[i]; if (keep) delete sh.corners[i]; const mx = cornerMax(sh, i, type); if (keep) sh.corners[i] = keep;
+  const sug = Math.max(0.5, Math.round(mx * 0.3 * 2) / 2);
+  openNumberSheet({
+    title: f ? 'Fillet' : 'Chamfer', sub: f ? 'Round the highlighted corner' : 'Bevel the highlighted corner',
+    note: f ? `Radius of the round. Fits up to R${fmt(Math.floor(mx * 10 + 1e-6) / 10)}.` : `How far back along each side the cut starts. Fits up to ${fmt(Math.floor(mx * 10 + 1e-6) / 10)} mm.`,
+    label: f ? 'Radius' : 'Distance', unit: 'mm', value: o.ink && o.ink.text ? o.ink.text : fmt(cur ?? sug), ink: o.ink, focus: { corner: { id: sh.id, i } },
+    apply: (v) => { const prev = sh.corners && sh.corners[i]; if (prev) delete sh.corners[i]; const m = setCorner(sh, i, type, v); if (m && prev) sh.corners[i] = prev; return m ? { ok: false, msg: m } : { ok: true, msg: `${f ? 'Fillet R' : 'Chamfer '}${fmt(v)}` }; },
+    remove: cur != null ? () => { delete sh.corners[i]; } : null,
+    extras: [{ label: f ? 'Chamfer instead' : 'Fillet instead', fn: () => editCornerTreat(sh, i, f ? 'c' : 'f') }],
+  });
+}
+function editAllCorners(sh, type) {
+  const f = type === 'f';
+  openNumberSheet({
+    title: f ? 'Round all corners' : 'Bevel all corners', sub: `${sh.pts.length} corners`, note: f ? 'The same radius on every corner of this outline.' : 'The same cut on every corner of this outline.',
+    label: f ? 'Radius' : 'Distance', unit: 'mm', value: '', placeholder: '3', focus: null,
+    apply: (v) => { const m = setAllCorners(sh, type, v); return m ? { ok: false, msg: m } : { ok: true, msg: `${f ? 'Rounded' : 'Bevelled'} all corners` }; },
+    remove: hasAnyCorner(sh) ? () => { sh.corners = {}; } : null,
   });
 }
 function editCircle(sh, o = {}) {
@@ -2256,7 +2392,7 @@ function runAct(act) {
   }
 }
 function straighten(sh) {
-  const b = bbox(sh.pts); const D = Math.hypot(b.w, b.h); sh.smooth = false; sh.dims = {}; sh.angs = {}; sh.vangs = {};
+  const b = bbox(sh.pts); const D = Math.hypot(b.w, b.h); sh.smooth = false; sh.dims = {}; sh.angs = {}; sh.vangs = {}; sh.corners = {};
   sh.pts = sh.closed ? snapClosed(cleanVerts(rdp([...sh.pts, sh.pts[0]], 0.03 * D).slice(0, -1), true, 0.03 * D)) : snapOpen(cleanVerts(rdp(sh.pts, 0.03 * D), false, 0.03 * D));
 }
 
@@ -2272,7 +2408,7 @@ function openSelSheet(h) {
     const apply = () => { const x = num($('#v-x').value), y = num($('#v-y').value); if (!Number.isFinite(x) || !Number.isFinite(y)) return toast('Enter numbers for X and Y.'); sh.pts[h.i] = [x, y]; const n = edgeCount(sh); [h.i, (h.i - 1 + sh.pts.length) % sh.pts.length].forEach((k) => { if (k < n) { delete sh.dims[k]; delete sh.angs[k]; } }); if (sh.vangs) [h.i - 1, h.i, h.i + 1].forEach((k) => delete sh.vangs[(k + sh.pts.length) % sh.pts.length]); applyAllLocs(); commit(); render(); toast('Point moved'); };
     $('#v-apply').onclick = apply; onEnter($('#v-x'), apply); onEnter($('#v-y'), apply);
     if ($('#v-ang')) $('#v-ang').onclick = () => editVertexAngle(sh, h.i);
-    $('#v-del').onclick = () => { if (sh.pts.length <= (sh.closed ? 3 : 2)) doc.sketch.shapes = shapes().filter((s) => s !== sh); else { sh.pts.splice(h.i, 1); sh.dims = {}; sh.angs = {}; sh.vangs = {}; sh.locs = []; doc.sketch.rels = rels().filter((r) => !relShapes(r).includes(sh.id)); inferRelations(sh); } sel = null; applyAllLocs(); commit(); closeSheet(); render(); };
+    $('#v-del').onclick = () => { if (sh.pts.length <= (sh.closed ? 3 : 2)) doc.sketch.shapes = shapes().filter((s) => s !== sh); else { sh.pts.splice(h.i, 1); sh.dims = {}; sh.angs = {}; sh.vangs = {}; sh.locs = []; sh.corners = {}; doc.sketch.rels = rels().filter((r) => !relShapes(r).includes(sh.id)); inferRelations(sh); } sel = null; applyAllLocs(); commit(); closeSheet(); render(); };
     return;
   }
   const AA = analyzeSketch(); const P = sh.type === 'poly' && !sh.smooth && sh.closed ? AA.polys.get(sh.id) : null; const pos = AA.pos.get(sh.id) || { need: false, have: 0 };
@@ -2286,12 +2422,15 @@ function openSelSheet(h) {
       ${sh.type === 'circle' ? '<button class="btn" id="s-dia">Diameter</button><button class="btn" id="s-rel">Relations…</button>' : ''}
       ${pos.need && pos.have < 2 ? '<button class="btn" id="s-pos">Add distance</button>' : ''}
       ${sh.smooth ? '<button class="btn" id="s-straight">Straighten</button>' : ''}
+      ${sh.type === 'poly' && !sh.smooth ? '<button class="btn" id="s-fil">Round corners…</button><button class="btn" id="s-cha">Bevel corners…</button>' : ''}
       <button class="btn" id="c-dup"><svg class="i"><use href="#i-copy"/></svg>Copy</button>
       <button class="btn danger" id="c-del"><svg class="i"><use href="#i-trash"/></svg>Delete</button>
     </div>`, { kind: 'shape', id: sh.id });
   const q = (s) => $(s);
   if (q('#s-dia')) q('#s-dia').onclick = () => editCircle(sh);
   if (q('#s-rel')) q('#s-rel').onclick = () => openRelSheet({ id: sh.id });
+  if (q('#s-fil')) q('#s-fil').onclick = () => editAllCorners(sh, 'f');
+  if (q('#s-cha')) q('#s-cha').onclick = () => editAllCorners(sh, 'c');
   if (q('#s-pos')) q('#s-pos').onclick = () => { const loc = suggestLoc(sh); if (loc) editLoc(sh, loc, { isNew: true }); else toast('No straight edge nearby to measure from.'); };
   if (q('#s-straight')) q('#s-straight').onclick = () => { straighten(sh); commit(); render(); openSelSheet(h); };
   q('#c-del').onclick = () => { doc.sketch.shapes = shapes().filter((s) => s !== sh); sel = null; applyAllLocs(); commit(); closeSheet(); render(); };
@@ -2344,7 +2483,7 @@ function baseRecipe(op, val) {
   return { kind: 'revolve', angle: val, closed: isClosedShape(target), profile: pts.map((p) => [p[0] - b.x0, p[1] - b.y0]) };
 }
 function regionsCenter(regions) { const b = bbox(regions.flatMap((r) => r.outline)); return [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2]; }
-function shapeRecipe(sh, c) { return sh.type === 'circle' ? { type: 'circle', c: V.sub(sh.c, c), r: sh.r } : { type: 'poly', pts: sh.pts.map((p) => V.sub(p, c)) }; }
+function shapeRecipe(sh, c) { return sh.type === 'circle' ? { type: 'circle', c: V.sub(sh.c, c), r: sh.r } : { type: 'poly', pts: treatedPts(sh).map((p) => V.sub(p, c)) }; }
 
 function openReview() {
   if (!shapes().length) { toast('Draw something first.'); return; }
@@ -2887,7 +3026,7 @@ function setMode(m) {
 }
 function updateFab() { const b = $('#btn-review'); b.hidden = mode !== 'sketch' || sheet.classList.contains('open') || !shapes().length; }
 const HINTS = {
-  draw: '<b>Draw</b> shapes, <b>write numbers</b> beside edges, <b>tap</b> an edge or corner for a size or angle, <b>hold</b> anything to move it, <b>scribble or cross out</b> to delete.',
+  draw: '<b>Draw</b> shapes, <b>write numbers</b> beside edges, <b>tap</b> an edge or corner for a size or angle, <b>hold</b> anything to move it, a small <b>curve across a corner</b> rounds it, <b>scribble or cross out</b> to delete.',
   dim: '<b>Write a number</b> next to a line, or <b>60°</b> in a corner. <b>Drag from one line to the next</b> for the angle between them, or <b>from a hole to an edge</b> for its distance.',
   select: '<b>Drag</b> points, lines or shapes to move them; relations (H, V, ∥, ⊥, =) hold. <b>Tap</b> one to edit its size and relations.',
   line: '<b>Drag</b> to draw a straight line. Ends join up; close the loop to make an outline.',
@@ -2963,6 +3102,7 @@ function showHelp() {
   <div class="help"><ol>
     <li><b>Draw</b> with your finger. Wobbly lines straighten and snap to 90° and 45°; end where you started to close an outline. Circles inside become holes.</li>
     <li><b>Write a number</b> right next to an edge, e.g. <b>80</b>. The first number scales the whole sketch; later ones reshape it. Or just <b>tap</b> an edge or circle and write or type the size.</li>
+    <li><b>Fillets and chamfers:</b> draw a small curve across a corner to round it, or a short straight cut to bevel it. Or tap a corner and choose <b>Fillet…</b> or <b>Chamfer…</b>; an outline's sheet has <b>Round corners…</b> for all of them. Sizes refer to the sharp corner.</li>
     <li><b>Relations</b> such as horizontal, vertical, parallel, perpendicular and equal are added as you draw. See and edit them in Select mode, or tap a line and choose <b>Relations</b>.</li>
     <li><b>Angles:</b> tap a corner, write the angle with a degree sign inside it (e.g. <b>60°</b>), or in Dimension mode drag from one line to the line it meets.</li>
     <li>Watch the status chip. <b>Amber</b> edges still need a size; grey numbers in brackets are worked out from your other sizes.</li>
@@ -3070,7 +3210,7 @@ showHint(HINTS.draw, 8000);
 if (!saved) setTimeout(() => toast('Example loaded. Tap ⋯ › New project to start your own.', null, 5000), 600);
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http') && !window.claude && window.top === window.self) navigator.serviceWorker.register('sw.js').catch(() => {});
-window.__napkin = { setVertexAngle, cornerAngle, solveAll, change, inferRelations, addRelation, dragAction, rels, editVertexAngle, commit, _T: T, THREE, doc, Digits, recognize, setEdgeDim, buildRegions, analyzeSketch, view: () => view, toS, toW, exportModel, toSTL, runBoolean, computeFace, startFaceSketch, featureFromSketch, openReview, get dimHits() { return dimHits; }, get parts() { return doc.parts; }, get sketch() { return doc.sketch; }, get selFace() { return selFace; }, project(v) { const r = $('#view3d').getBoundingClientRect(); const q = new THREE.Vector3(...v).project(T.camera); return [r.left + (q.x + 1) / 2 * r.width, r.top + (1 - q.y) / 2 * r.height]; } };
+window.__napkin = { setCorner, setAllCorners, cornerGeom, treatedPts, editCornerTreat, setVertexAngle, cornerAngle, solveAll, change, inferRelations, addRelation, dragAction, rels, editVertexAngle, commit, _T: T, THREE, doc, Digits, recognize, setEdgeDim, buildRegions, analyzeSketch, view: () => view, toS, toW, exportModel, toSTL, runBoolean, computeFace, startFaceSketch, featureFromSketch, openReview, get dimHits() { return dimHits; }, get parts() { return doc.parts; }, get sketch() { return doc.sketch; }, get selFace() { return selFace; }, project(v) { const r = $('#view3d').getBoundingClientRect(); const q = new THREE.Vector3(...v).project(T.camera); return [r.left + (q.x + 1) / 2 * r.width, r.top + (1 - q.y) / 2 * r.height]; } };
 </script>
 </body>
 </html>
