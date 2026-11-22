@@ -30,6 +30,11 @@ Everything runs in the browser, works offline once loaded, and can be installed 
 - Or tap a corner and choose **Fillet…** / **Chamfer…**, or **Round corners…** / **Bevel corners…** on an outline for all of them at once.
 - Sizes refer to the sharp corner (shown dashed), so lengths and angles keep their meaning. Too-large values are refused with the largest size that fits. Rounded and bevelled corners carry into the 3D part.
 
+**Centerlines: revolve and mirror**
+- Draw a centerline with the **Centerline** tool, or draw **three short dashes in a row** in Draw mode (more dashes make it longer).
+- Draw the half profile beside it: corners near the axis snap onto it, and a stroke that starts and ends on the axis closes itself along it. The app then offers **Revolve around the centerline**; holes in the profile become ring-shaped voids, and the part's distance from the axis is checked like any other size.
+- Tap the centerline to **Revolve around it**, **Mirror shapes across** (a half outline on the axis becomes one symmetric outline; other shapes get mirrored copies), turn it into a normal line, or delete it.
+
 **Fully-defined check, then confirm**
 - A status chip shows **Not to scale / Needs N dims / Fully defined / Over-defined**. Edges that still need a size are amber; sizes worked out from other dimensions show in grey brackets; duplicates are red.
 - **Review** shows a live 3D preview, what is still missing, and **Add missing dimensions**, which walks you through each one. Nothing becomes 3D until you **Confirm**.

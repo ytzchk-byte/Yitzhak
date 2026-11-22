@@ -201,8 +201,9 @@ details.more[open] summary { color: var(--ink); }
 
 /* Toast */
 .toast { pointer-events: none; position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%); z-index: 30; display: flex; gap: 10px; align-items: center; background: var(--ink); color: var(--panel); padding: 10px 14px; border-radius: 12px; box-shadow: var(--shadow); font-size: 13.5px; max-width: calc(100% - 32px); }
-.toast button { pointer-events: auto; border: 0; background: transparent; color: var(--accent-soft); font-weight: 700; padding: 2px 4px; cursor: pointer; white-space: nowrap; }
+.toast button { flex: none; pointer-events: auto; border: 0; background: transparent; color: var(--accent-soft); font-weight: 700; padding: 2px 4px; cursor: pointer; white-space: nowrap; }
 .toast span { min-width: 0; }
+.toast #toast-acts { flex: none; display: flex; gap: 2px; }
 
 .help { line-height: 1.5; }
 .help ol, .help ul { padding-left: 20px; margin: 0 0 12px; }
@@ -220,6 +221,7 @@ details.more[open] summary { color: var(--ink); }
   <defs>
     <symbol id="i-pen" viewBox="0 0 24 24"><path d="M4 20l4.2-1.1L19 8.1 15.9 5 5.1 15.8z"/><path d="M13.8 7.1l3.1 3.1"/></symbol>
     <symbol id="i-line" viewBox="0 0 24 24"><path d="M6.2 17.8L17.8 6.2"/><circle cx="5" cy="19" r="1.8"/><circle cx="19" cy="5" r="1.8"/></symbol>
+    <symbol id="i-cline" viewBox="0 0 24 24"><path d="M2 20L7 15M9.5 12.5l1-1M13 9l5-5M20.5 3.5l.5-.5"/></symbol>
     <symbol id="i-rect" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1"/></symbol>
     <symbol id="i-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 12h8"/></symbol>
     <symbol id="i-dim" viewBox="0 0 24 24"><path d="M3 7v10M21 7v10M3 12h18M6.5 9L3.5 12l3 3M17.5 9l3 3-3 3"/></symbol>
@@ -308,6 +310,7 @@ details.more[open] summary { color: var(--ink); }
     <button class="tool" data-tool="dim"><svg class="i"><use href="#i-dim"/></svg>Dimension</button>
     <button class="tool" data-tool="select"><svg class="i"><use href="#i-select"/></svg>Select</button>
     <button class="tool" data-tool="line"><svg class="i"><use href="#i-line"/></svg>Line</button>
+    <button class="tool" data-tool="cline"><svg class="i"><use href="#i-cline"/></svg>Centerline</button>
     <button class="tool" data-tool="rect"><svg class="i"><use href="#i-rect"/></svg>Rect</button>
     <button class="tool" data-tool="circle"><svg class="i"><use href="#i-circle"/></svg>Circle</button>
     <span class="tool sep" aria-hidden="true"></span>
@@ -764,16 +767,21 @@ const REL = {
   eq: { g: '=', name: 'Equal length', kinds: ['edge', 'edge'] }, coll: { g: '⋯', name: 'Collinear', kinds: ['edge', 'edge'] },
   conc: { g: '◎', name: 'Concentric', kinds: ['circle', 'circle'] }, eqr: { g: '=', name: 'Equal size', kinds: ['circle', 'circle'] },
   tan: { g: 'T', name: 'Tangent', kinds: ['edge', 'circle'] },
+  pon: { g: '•', name: 'On centerline', kinds: ['vertex', 'edge'] },
 };
 const rels = () => (doc.sketch.rels = doc.sketch.rels || []);
 function refOk(ref, kind) {
   const sh = byId(ref && ref.id); if (!sh) return false;
+  if (kind === 'vertex') return sh.type === 'poly' && ref.v >= 0 && ref.v < sh.pts.length;
   if (kind === 'circle') return sh.type === 'circle';
   return sh.type === 'poly' && !sh.smooth && ref.i >= 0 && ref.i < edgeCount(sh);
 }
 const relValid = (r) => REL[r.type] && refOk(r.a, REL[r.type].kinds[0]) && (REL[r.type].kinds.length < 2 || (refOk(r.b, REL[r.type].kinds[1]) && !(r.a.id === r.b.id && r.a.i === r.b.i)));
 const relShapes = (r) => [r.a && r.a.id, r.b && r.b.id].filter(Boolean);
-const sameRef = (p, q) => p && q && p.id === q.id && (p.i ?? -1) === (q.i ?? -1);
+const sameRef = (p, q) => p && q && p.id === q.id && (p.i ?? -1) === (q.i ?? -1) && (p.v ?? -1) === (q.v ?? -1);
+const isCL = (s) => !!s && s.type === 'poly' && !!s.center;
+const centerlines = () => shapes().filter(isCL);
+function clFrame(cl) { const [A, B] = cl.pts; const d = V.norm(V.sub(B, A)); return { A, d, side: (p) => V.cross(d, V.sub(p, A)), foot: (p) => V.add(A, V.mul(d, V.dot(V.sub(p, A), d))) }; }
 function pruneRels() { doc.sketch.rels = rels().filter(relValid); }
 
 function buildModel() {
@@ -815,6 +823,7 @@ function relFn(M, r) {
     case 'conc': return (x) => { const p = C(x, r.a), q = C(x, r.b); return [p.c[0] - q.c[0], p.c[1] - q.c[1]]; };
     case 'eqr': return (x) => [C(x, r.a).r - C(x, r.b).r];
     case 'tan': return (x) => { const [a, b] = E(x, r.a); const q = C(x, r.b); return [Math.abs(V.cross(unitV(a, b), V.sub(q.c, a))) - q.r]; };
+    case 'pon': return (x) => { const q = XP(M, x, r.a.id, r.a.v); const [a, b] = E(x, r.b); return [V.cross(unitV(a, b), V.sub(q, a))]; };
   }
   return () => [];
 }
@@ -937,6 +946,12 @@ function change(mutate, scope = [], key = null, near = null) {
 // Relations the app adds by itself when a shape is drawn; only the ones that add information are kept.
 function inferRelations(sh, opts = {}) {
   const before = new Set(rels().map((q) => q.id)); const add = (type, a, b) => rels().push({ id: uid(), type, a, b, auto: true, t: Date.now() });
+  // corners close to a centerline snap onto it and stay there
+  let onAxis = 0; const near = (p, cl) => Math.abs(clFrame(cl).side(p)) < snapRadiusW();
+  const pin = (o, v, cl) => { o.pts[v] = clFrame(cl).foot(o.pts[v]); add('pon', { id: o.id, v }, { id: cl.id, i: 0 }); onAxis++; };
+  if (isCL(sh)) shapes().forEach((o) => { if (o.type === 'poly' && !isCL(o) && !o.smooth) o.pts.forEach((q, v) => { if (near(q, sh)) pin(o, v, sh); }); });
+  else if (sh.type === 'poly' && !sh.smooth) centerlines().forEach((cl) => sh.pts.forEach((q, v) => { if (near(q, cl)) pin(sh, v, cl); }));
+  if (onAxis) solveAll();
   if (sh.type === 'poly' && !sh.smooth) {
     const { n, dirs, L } = polyDirs(sh); const ax = (k) => Math.abs(dirs[k][1]) < 1e-6 || Math.abs(dirs[k][0]) < 1e-6;
     for (let k = 0; k < n; k++) { if (Math.abs(dirs[k][1]) < 1e-6) add('h', { id: sh.id, i: k }); else if (Math.abs(dirs[k][0]) < 1e-6) add('v', { id: sh.id, i: k }); }
@@ -978,6 +993,7 @@ function analyzeSketch() {
   const key = JSON.stringify(doc.sketch); if (anaCache.key === key) return anaCache.A;
   const A = computeAnalysis(); anaCache = { key, A }; return A;
 }
+function axisAnchor(s, CL) { if (s.type === 'circle') return -1; const F = clFrame(CL); let best = 0; s.pts.forEach((q, v) => { if (Math.abs(F.side(q)) < Math.abs(F.side(s.pts[best]))) best = v; }); return best; }
 function computeAnalysis() {
   const A = { polys: new Map(), pos: new Map(), circ: new Map(), sugg: new Map(), items: [], need: 0, over: 0, approx: 0, closed: 0, status: 'empty', overKeys: new Set() };
   const sh = shapes(); if (!sh.length) return A;
@@ -995,6 +1011,7 @@ function computeAnalysis() {
   const ordered = sh.slice().sort((a, b) => (isClosedShape(b) ? shapeArea(b) : 0) - (isClosedShape(a) ? shapeArea(a) : 0));
   for (const s of ordered) {
     const id = s.id; const name = s.type === 'circle' ? (containerOf(s) || doc.sketch.plane ? 'Hole' : 'Circle') : s.closed ? (containerOf(s) ? 'Cutout' : 'Outline') : 'Line';
+    if (isCL(s)) continue;
     if (s.type === 'poly' && !s.closed) { A.items.push({ lvl: 'info', text: 'Open line is not part of a solid', act: { t: 'del', id }, btn: 'Delete' }); continue; }
     if (s.type === 'poly' && s.smooth) { A.approx++; A.items.push({ lvl: 'approx', text: `${name} is a freeform curve. Its size comes from your drawing.`, act: { t: 'straighten', id }, btn: 'Straighten' }); }
     let count = 0; const sugg = [];
@@ -1036,6 +1053,12 @@ function computeAnalysis() {
       } else missing = 2;
       pos = { need: true, have: 2 - missing };
       if (missing) { A.need += missing; A.items.push({ lvl: 'need', text: `${name} position needs ${plural(missing, 'more distance')}`, act: { t: 'pos', id }, btn: 'Add' }); sugg.push({ t: 'pos' }); }
+    }
+    const CL = centerlines()[0];
+    if (CL && !doc.sketch.plane && isClosedShape(s) && !containerOf(s)) {
+      const an = axisAnchor(s, CL);
+      const g = grad((x) => { const L = XE(M, x, CL.id, 0); const q = s.type === 'circle' ? XC(M, x, id).c : XP(M, x, id, an); return V.cross(unitV(L[0], L[1]), V.sub(q, L[0])); }, [id, CL.id]);
+      if (take(g)) { A.need++; A.items.push({ lvl: 'need', text: `${name} needs its distance from the centerline`, act: { t: 'axisd', id }, btn: 'Add' }); sugg.push({ t: 'axisd' }); }
     }
     A.pos.set(id, pos); A.sugg.set(id, sugg);
   }
@@ -1095,6 +1118,7 @@ function drawSketch() {
   const showMeasure = ['dim', 'select', 'line', 'rect', 'circle'].includes(tool);
   for (const sh of shapes()) {
     const selected = sel && sel.id === sh.id && sel.kind === 'shape';
+    if (isCL(sh)) continue; // drawn on top, after the outlines
     const P = A.polys.get(sh.id); const pos = A.pos.get(sh.id);
     c.lineJoin = 'round'; c.lineCap = 'round';
     if (sh.type === 'poly' && !sh.smooth && P && calibrated && !selected) {
@@ -1124,6 +1148,12 @@ function drawSketch() {
     }
     if (sh.type === 'circle') { const q = toS(sh.c); c.strokeStyle = tok.muted; c.lineWidth = 1; c.beginPath(); c.moveTo(q[0] - 5, q[1]); c.lineTo(q[0] + 5, q[1]); c.moveTo(q[0], q[1] - 5); c.lineTo(q[0], q[1] + 5); c.stroke(); }
     drawDims(c, sh, P, showMeasure, calibrated);
+  }
+  for (const sh of centerlines()) {
+    const [a, b] = sh.pts.map(toS); const d = V.norm(V.sub(b, a)); const e0 = V.sub(a, V.mul(d, 14)), e1 = V.add(b, V.mul(d, 14));
+    c.strokeStyle = tok.paper; c.lineWidth = 4; c.beginPath(); c.moveTo(e0[0], e0[1]); c.lineTo(e1[0], e1[1]); c.stroke();
+    c.strokeStyle = tok.accent; c.lineWidth = sel && sel.id === sh.id ? 2.6 : 1.6; c.setLineDash([16, 4, 3, 4]); c.beginPath(); c.moveTo(e0[0], e0[1]); c.lineTo(e1[0], e1[1]); c.stroke(); c.setLineDash([]);
+    label(c, V.add(e1, V.mul(d, 10)), '℄', tok.accent, 0, true, 14);
   }
   if (['select', 'dim'].includes(tool) || pickRel || (sheetFor && ['edge', 'rel'].includes(sheetFor.kind))) drawRelGlyphs(c);
   // selection & focus overlays
@@ -1194,7 +1224,8 @@ function drawRelGlyphs(c) {
     for (const ref of [r.a, r.b].filter(Boolean)) {
       const key = ref.id + ':' + (ref.i ?? 'c'); const k = per.get(key) || 0; per.set(key, k + 1);
       const sh = byId(ref.id); let at;
-      if (ref.i != null) { const [a, b] = edgePts(sh, ref.i).map(toS); const nn = outwardNormal(sh, ref.i); const d = V.norm(V.sub(b, a)); const mid = V.lerp(a, b, 0.5); at = [mid[0] - nn[0] * 16 + d[0] * (k * 22 - 14), mid[1] - nn[1] * 16 + d[1] * (k * 22 - 14)]; }
+      if (ref.v != null) { const q = toS(sh.pts[ref.v]); at = [q[0] + 11 + k * 14, q[1] - 11]; }
+      else if (ref.i != null) { const [a, b] = edgePts(sh, ref.i).map(toS); const nn = outwardNormal(sh, ref.i); const d = V.norm(V.sub(b, a)); const mid = V.lerp(a, b, 0.5); at = [mid[0] - nn[0] * 16 + d[0] * (k * 22 - 14), mid[1] - nn[1] * 16 + d[1] * (k * 22 - 14)]; }
       else { const q = toS(sh.c), rr = sh.r * view.s; at = [q[0] - (rr + 12) * 0.71 - k * 22, q[1] + (rr + 12) * 0.71]; }
       label(c, at, REL[r.type].g + (num ? String(num) : ''), r.auto ? tok.muted : tok.accent, 0, true, 10, { kind: 'rel', id: ref.id, i: r.id, rel: r.id });
     }
@@ -1486,7 +1517,7 @@ function snapRadiusW() { return 22 / view.s; }
 function nearestVertex(p, excludeId, onlyEnds = false) {
   let best = null; const R = snapRadiusW();
   for (const sh of shapes()) {
-    if (sh.id === excludeId || sh.type !== 'poly') continue;
+    if (sh.id === excludeId || sh.type !== 'poly' || (onlyEnds && sh.center)) continue;
     const idxs = onlyEnds ? (sh.closed ? [] : [0, sh.pts.length - 1]) : sh.pts.map((_, i) => i);
     for (const i of idxs) { const d = V.dist(p, sh.pts[i]); if (d < R && (!best || d < best.d)) best = { d, sh, i, p: sh.pts[i] }; }
   }
@@ -1516,6 +1547,8 @@ function addOpenWithJoin(sh) {
     return pushShape({ ...sh, closed: true, pts: sh.smooth || sh.precise ? loop : snapClosed(cleanVerts(loop, true, 1e-6, 2)) }, 'Closed outline');
   }
   for (const idx of [0, pts.length - 1]) { const v = nearestVertex(pts[idx], null, false); if (v) pts[idx] = v.p.slice(); }
+  const ax = centerlines().find((cl) => { const F = clFrame(cl); return [pts[0], pts[pts.length - 1]].every((q) => Math.abs(F.side(q)) < snapRadiusW()) && pts.some((q) => Math.abs(F.side(q)) > 2 * snapRadiusW()); });
+  if (ax && !sh.center) { const F = clFrame(ax); pts[0] = F.foot(pts[0]); pts[pts.length - 1] = F.foot(pts[pts.length - 1]); return pushShape({ ...sh, closed: true, pts }, 'Half profile closed on the centerline'); }
   return pushShape({ ...sh, closed: false, pts }, merged ? 'Joined' : null);
 }
 function pushShape(sh, kind) { sh.id = sh.id || uid(); sh.dims = {}; sh.angs = {}; sh.vangs = {}; sh.locs = []; sh.corners = {}; doc.sketch.shapes.push(sh); inferRelations(sh); return kind; }
@@ -1524,7 +1557,7 @@ function finishFreehand(stroke, quiet) {
   let kind = res.kind;
   if (res.shape.type === 'poly' && !res.shape.closed) kind = addOpenWithJoin(res.shape) || kind;
   else pushShape(res.shape, kind);
-  buzz(); commit(); render(); if (!quiet) flash(kind);
+  buzz(); commit(); render(); if (!quiet) flash(kind); suggestRevolve();
 }
 
 /* =========================================================================
@@ -1679,7 +1712,7 @@ function relSection(ref) {
   const kind = ref.i != null ? 'edge' : 'circle';
   const mine = rels().filter((r) => relValid(r) && (sameRef(r.a, ref) || sameRef(r.b, ref)));
   const chips = mine.map((r) => `<button class="btn sm" data-relx="${r.id}" aria-label="Remove ${REL[r.type].name}">${REL[r.type].g} ${REL[r.type].name}${r.auto ? ' · auto' : ''} <svg class="i"><use href="#i-x"/></svg></button>`).join('');
-  const types = Object.entries(REL).filter(([, d]) => d.kinds.includes(kind));
+  const types = Object.entries(REL).filter(([t, d]) => t !== 'pon' && d.kinds.includes(kind));
   return `<div class="section-label">Relations</div>${chips ? `<div class="row" style="margin-bottom:8px">${chips}</div>` : '<p class="note">No relations on this one yet.</p>'}
     <div class="section-label">Add</div><div class="row" style="margin-bottom:12px">${types.map(([t, d]) => `<button class="btn sm" data-reladd="${t}">${d.g} ${d.name}${d.kinds.length > 1 ? '…' : ''}</button>`).join('')}</div>`;
 }
@@ -1699,6 +1732,38 @@ function openRelInfo(relId) {
     <div class="row">${r.auto ? '<button class="btn" id="ri-keep">Keep it</button>' : ''}<button class="btn danger" id="ri-del"><svg class="i"><use href="#i-trash"/></svg>Remove relation</button></div>`, { kind: 'rel' });
   if ($('#ri-keep')) $('#ri-keep').onclick = () => { r.auto = false; commit(); closeSheet(); render(); toast(`${REL[r.type].name} kept`); };
   $('#ri-del').onclick = () => { doc.sketch.rels = rels().filter((q) => q !== r); commit(); closeSheet(); render(); toast(`${REL[r.type].name} removed`, [{ label: 'Undo', fn: undo }]); };
+}
+function openCenterlineSheet(cl) {
+  sel = { kind: 'shape', id: cl.id }; render();
+  const r = baseRecipe('revolve', 360);
+  openSheet(`<div class="head"><div><h2>℄ Centerline</h2><div class="sub">Axis for revolving and mirroring</div></div>${closeBtn}</div>
+    <p class="note">${r && !r.error ? 'Your profile is on one side, ready to spin around this axis.' : r && r.error ? r.error : 'Draw the half profile on one side of it, then revolve.'}</p>
+    <div class="row" style="margin-bottom:10px"><button class="btn primary" id="cl-rev" ${r && !r.error ? '' : 'disabled'}><svg class="i"><use href="#i-cube"/></svg>Revolve around it</button><button class="btn" id="cl-mir">Mirror shapes across</button></div>
+    <div class="row"><button class="btn" id="cl-normal">Make it a normal line</button><button class="btn danger" id="cl-del"><svg class="i"><use href="#i-trash"/></svg>Delete</button></div>`, { kind: 'cline', id: cl.id });
+  $('#cl-rev').onclick = () => openReview('revolve');
+  $('#cl-mir').onclick = () => { const m = mirrorAcross(cl); commit(); closeSheet(); render(); toast(m, [{ label: 'Undo', fn: undo }]); };
+  $('#cl-normal').onclick = () => { cl.center = false; doc.sketch.rels = rels().filter((q) => !(q.type === 'pon' && q.b.id === cl.id)); commit(); closeSheet(); render(); };
+  $('#cl-del').onclick = () => { doc.sketch.shapes = shapes().filter((q) => q !== cl); pruneRels(); commit(); closeSheet(); render(); toast('Centerline deleted', [{ label: 'Undo', fn: undo }]); };
+}
+// Mirror across a centerline: a half outline lying on the axis becomes one symmetric outline; other shapes get mirrored copies.
+function mirrorAcross(cl) {
+  const F = clFrame(cl); const mir = (q) => V.sub(V.mul(F.foot(q), 2), q); const tol = Math.max(1e-6, 0.5 / view.s);
+  const onAx = (q) => Math.abs(F.side(q)) < tol; let joined = 0, copied = 0;
+  for (const sh of shapes().filter((q) => !isCL(q))) {
+    if (sh.type === 'poly' && sh.closed) {
+      const n = sh.pts.length; const k = sh.pts.findIndex((q, i) => onAx(q) && onAx(sh.pts[(i + 1) % n]));
+      if (k >= 0) {
+        const path = []; for (let j = 1; j <= n; j++) path.push(sh.pts[(k + j) % n].slice());
+        const full = [...path, ...path.slice(1, -1).reverse().map(mir)];
+        doc.sketch.shapes = shapes().filter((q) => q !== sh); pushShape({ type: 'poly', closed: true, precise: sh.precise, pts: cleanVerts(full, true, 1e-6, 0.5) }); joined++; continue;
+      }
+    }
+    const cp = JSON.parse(JSON.stringify(sh)); cp.id = uid(); cp.locs = [];
+    if (cp.type === 'circle') cp.c = mir(cp.c); else cp.pts = cp.pts.map(mir);
+    doc.sketch.shapes.push(cp); inferRelations(cp); copied++;
+  }
+  pruneRels(); solveAll();
+  return joined && copied ? `Mirrored: ${plural(joined, 'outline')} made whole, ${plural(copied, 'copy')} added` : joined ? 'Mirrored into one symmetric outline' : copied ? `Mirrored ${plural(copied, 'shape')}` : 'Nothing to mirror';
 }
 function openEdgeSheet(sh, i) {
   sel = { kind: 'edge', id: sh.id, i }; render();
@@ -1872,6 +1937,46 @@ function scratchDelete(stroke) {
 const isStraightStroke = (st) => st.length > 2 && V.dist(st[0], st[st.length - 1]) > 0.92 * pathLen(st);
 // Gesture: two quick crossing strokes (an X) over something delete it. The first stroke was already drawn as a line.
 let lastLine = null;
+// Gesture: three or more short dashes in a row become a centerline (the first ones were drawn as lines; take them back).
+let dashRun = [], lastDashCL = null;
+const dashLike = (st) => { const L = pathLen(st); return L >= 8 && L <= 90 && isStraightStroke(st); };
+function trackDash(stroke, kind, committed) {
+  const now = performance.now();
+  if (!dashLike(stroke)) { dashRun = []; return false; }
+  if (dashRun.length && now - dashRun[dashRun.length - 1].t > 1600) dashRun = [];
+  // more dashes after a centerline was just made: make it longer
+  if (lastDashCL && now - lastDashCL.t < 1600) {
+    const cl = byId(lastDashCL.id); const F = cl && clFrame(cl);
+    if (F && stroke.every((q) => Math.abs(F.side(toW(q))) * view.s < 10)) {
+      takeBack([{ stroke, kind, committed, n: commits }]);
+      const ts = [...cl.pts, ...stroke.map(toW)].map((q) => V.dot(V.sub(q, F.A), F.d));
+      cl.pts = [V.add(F.A, V.mul(F.d, Math.min(...ts))), V.add(F.A, V.mul(F.d, Math.max(...ts)))]; lastDashCL.t = now; commit(); render(); return true;
+    }
+  }
+  dashRun.push({ stroke, kind, committed, n: commits, t: now });
+  if (dashRun.length < 3) return false;
+  const all = dashRun.flatMap((d) => d.stroke); const F = fitLine(all); const ts = all.map((q) => V.dot(V.sub(q, F.c), F.d)); const span = Math.max(...ts) - Math.min(...ts);
+  const ink = dashRun.reduce((t, d) => t + V.dist(d.stroke[0], d.stroke[d.stroke.length - 1]), 0);
+  const ok = span > 60 && all.every((q) => lineDist(q, F) < Math.max(7, 0.04 * span)) && dashRun.every((d) => Math.abs(V.dot(V.norm(V.sub(d.stroke[d.stroke.length - 1], d.stroke[0])), F.d)) > Math.cos(0.26)) && ink < 0.85 * span;
+  if (!ok) { dashRun = dashRun.slice(-2); return false; }
+  const run = dashRun; dashRun = [];
+  if (!takeBack(run)) return false;
+  let a = toW(V.add(F.c, V.mul(F.d, Math.min(...ts)))), b = toW(V.add(F.c, V.mul(F.d, Math.max(...ts))));
+  const dir = snapDir(V.sub(b, a)); const mid = V.lerp(a, b, 0.5), half = V.dist(a, b) / 2; a = V.sub(mid, V.mul(dir, half)); b = V.add(mid, V.mul(dir, half));
+  pushShape({ type: 'poly', closed: false, center: true, pts: [a, b] }); commit(); render(); buzz(15); flash('Centerline');
+  lastDashCL = { id: shapes()[shapes().length - 1].id, t: performance.now() }; suggestRevolve();
+  return true;
+}
+// Undo the lines that the dashes made (they must be the latest changes) and drop dashes held as handwriting.
+function takeBack(run) {
+  const lines = run.filter((d) => d.kind === 'line' && d.committed);
+  const latest = lines.map((d) => d.n).sort((x, y) => x - y);
+  if (latest.length && latest[latest.length - 1] !== commits) return false;
+  for (let k = 0; k < latest.length; k++) if (latest[k] !== commits - latest.length + 1 + k) return false;
+  for (let k = 0; k < latest.length; k++) undo();
+  const inks = new Set(run.filter((d) => d.kind === 'ink').map((d) => d.stroke)); if (inks.size) { live.handwriting = live.handwriting.filter((q) => !inks.has(q)); if (!live.handwriting.length) clearTimeout(inkTimer); }
+  return true;
+}
 function crossOut(stroke) {
   const ll = lastLine; lastLine = null;
   if (!ll || performance.now() - ll.t > 2000 || commits !== ll.n || !isStraightStroke(stroke)) return false;
@@ -1962,6 +2067,7 @@ function tapEdit(q) {
   const h = dimHitAt(q); if (h) { editDimHit(h); return true; }
   const v = nearestCorner(q); if (v && v.d < 18) { editVertexAngle(v.sh, v.i); return true; }
   const t = hitTest(q, ['circle', 'edge']);
+  if (t && t.kind === 'edge' && isCL(byId(t.id))) { openCenterlineSheet(byId(t.id)); return true; }
   if (t && t.kind === 'edge') { editEdge(byId(t.id), t.i); return true; }
   if (t && t.kind === 'shape' && byId(t.id).type === 'circle') { editCircle(byId(t.id)); return true; }
   return false;
@@ -2024,8 +2130,9 @@ const Tools = {
           }
           if (isScratch(stroke)) { live.handwriting = []; clearTimeout(inkTimer); scratchDelete(stroke); return; }
           if (!live.handwriting.length && (crossOut(stroke) || strikeThrough(stroke) || cornerGesture(stroke))) return;
-          if (looksLikeNumber(stroke)) { live.handwriting.push(stroke); live.inkSource = 'auto'; scheduleInk(); render(); return; }
+          if (looksLikeNumber(stroke)) { live.handwriting.push(stroke); live.inkSource = 'auto'; scheduleInk(); trackDash(stroke, 'ink', false); render(); return; }
           flushInk(); const c0 = commits; finishFreehand(stroke);
+          if (trackDash(stroke, 'line', commits === c0 + 1)) { lastLine = null; return; }
           lastLine = isStraightStroke(stroke) && commits === c0 + 1 ? { seg: [stroke[0], stroke[stroke.length - 1]], t: performance.now(), n: commits } : null;
         },
         cancel() { clearTimeout(lp); if (grab) grab.cancel(); live.ink = null; live.doomed = null; render(); },
@@ -2051,6 +2158,19 @@ const Tools = {
         move(q) { b = upd(q); },
         up(q) { b = upd(q); live.preview = null; if (V.dist(a.p, b.p) * view.s < 6) { render(); return; } const kind = addOpenWithJoin({ type: 'poly', closed: false, precise: true, pts: [a.p, b.p] }); commit(); render(); if (kind) flash(kind); },
         cancel() { live.preview = null; render(); },
+      };
+    },
+  },
+  cline: {
+    down(p) {
+      const line = Tools.line.down(p);
+      return {
+        move: line.move, cancel: line.cancel,
+        up(q) {
+          line.move(q); const pre = live.preview; live.preview = null;
+          if (!pre || V.dist(pre.a, pre.b) * view.s < 12) { render(); return; }
+          pushShape({ type: 'poly', closed: false, center: true, precise: true, pts: [pre.a, pre.b] }); commit(); render(); flash('Centerline'); suggestRevolve();
+        },
       };
     },
   },
@@ -2377,7 +2497,8 @@ function runAct(act) {
       if (big.type === 'circle') return editCircle(big);
       const sg = (analyzeSketch().sugg.get(big.id) || []).find((q) => q.t === 'len'); return editEdge(big, sg ? sg.k : 0);
     }
-    case 'suggest': { const sg = (analyzeSketch().sugg.get(sh.id) || [])[0]; if (!sg) return guideNext(); return sg.t === 'len' ? editEdge(sh, sg.k) : sg.t === 'vang' ? editVertexAngle(sh, sg.i) : sg.t === 'dia' ? editCircle(sh) : runAct({ t: 'pos', id: sh.id }); }
+    case 'suggest': { const sg = (analyzeSketch().sugg.get(sh.id) || [])[0]; if (!sg) return guideNext(); return sg.t === 'len' ? editEdge(sh, sg.k) : sg.t === 'vang' ? editVertexAngle(sh, sg.i) : sg.t === 'dia' ? editCircle(sh) : sg.t === 'axisd' ? runAct({ t: 'axisd', id: sh.id }) : runAct({ t: 'pos', id: sh.id }); }
+    case 'axisd': { const CL = centerlines()[0]; if (!CL) return guideNext(); const an = axisAnchor(sh, CL); const loc = makeLoc(sh, { id: CL.id, i: 0 }, an < 0 ? sh.c : sh.pts[an]); if (!loc) return; if (sh.type === 'poly') loc.j = an; loc.d = Math.abs(locDistance(sh, loc)); return editLoc(sh, loc, { isNew: true }); }
     case 'dia': return editCircle(sh);
     case 'pos': { const loc = suggestLoc(sh); if (!loc) { guide.active = false; toast('No straight edge nearby to measure from. Drag the shape into place instead.'); return; } return editLoc(sh, loc, { isNew: true }); }
     case 'undim': delete sh.dims[act.k]; commit(); render(); return openReview();
@@ -2399,6 +2520,7 @@ function straighten(sh) {
 function openSelSheet(h) {
   if (!h) { closeSheet(); return; }
   const sh = byId(h.id); if (!sh) return;
+  if (isCL(sh)) return openCenterlineSheet(sh);
   if (h.kind === 'edge') return openEdgeSheet(sh, h.i);
   if (h.kind === 'vertex') {
     const p = sh.pts[h.i];
@@ -2474,7 +2596,17 @@ function solidMesh(g, color, opts = {}) {
 }
 
 function baseRecipe(op, val) {
-  const regions = buildRegions();
+  const regions = buildRegions(shapes().filter((q) => !isCL(q)));
+  const CL = centerlines()[0];
+  if (op === 'revolve' && CL && regions.length) {
+    const F = clFrame(CL); const loops = regions.flatMap((r) => [{ pts: r.outline, hole: false }, ...r.holes.map((h) => ({ pts: h.outline, hole: true }))]);
+    const sides = loops.flatMap((l) => l.pts.map(F.side)); const tol = 1e-3;
+    if (Math.min(...sides) < -tol && Math.max(...sides) > tol) return { error: 'The profile crosses the centerline. Keep it on one side to revolve it.' };
+    const sg = Math.max(...sides) > tol ? 1 : -1;
+    const mapped = loops.map((l) => ({ hole: l.hole, pts: l.pts.map((q) => [Math.max(0, sg * F.side(q)), V.dot(V.sub(q, F.A), F.d)]) }));
+    const y0 = Math.min(...mapped.flatMap((l) => l.pts.map((q) => q[1])));
+    return { kind: 'revolve', angle: val, closed: true, axis: true, loops: mapped.map((l) => ({ hole: l.hole, pts: l.pts.map((q) => [q[0], q[1] - y0]) })) };
+  }
   if (op === 'extrude') { if (!regions.length) return null; const c = regionsCenter(regions); return { kind: 'extrude', depth: val, regions: regions.map((r) => ({ outer: shapeRecipe(r.sh, c), holes: r.holes.map((h) => shapeRecipe(h.sh, c)) })) }; }
   const opens = shapes().filter((s) => s.type === 'poly' && !s.closed);
   const target = regions.length ? regions[0].sh : opens.sort((a, b) => pathLen(b.pts) - pathLen(a.pts))[0];
@@ -2485,12 +2617,12 @@ function baseRecipe(op, val) {
 function regionsCenter(regions) { const b = bbox(regions.flatMap((r) => r.outline)); return [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2]; }
 function shapeRecipe(sh, c) { return sh.type === 'circle' ? { type: 'circle', c: V.sub(sh.c, c), r: sh.r } : { type: 'poly', pts: treatedPts(sh).map((p) => V.sub(p, c)) }; }
 
-function openReview() {
+function openReview(prefOp) {
   if (!shapes().length) { toast('Draw something first.'); return; }
   guide.active = false; sel = null;
   const A = analyzeSketch(); const face = doc.sketch.plane; if (face) init3D();
   const ops = face ? [['add', 'Add material'], ['cut', 'Cut'], ['through', 'Cut through']] : [['extrude', 'Extrude'], ['revolve', 'Revolve']];
-  let op = store.get(face ? 'napkin.fop' : 'napkin.op'); if (!ops.some((o) => o[0] === op)) op = ops[0][0];
+  let op = typeof prefOp === 'string' ? prefOp : centerlines().length && !face ? 'revolve' : store.get(face ? 'napkin.fop' : 'napkin.op'); if (!ops.some((o) => o[0] === op)) op = ops[0][0];
   const st = {
     full: ['ok', 'i-check', 'Fully defined', 'Every size and position comes from your dimensions.'],
     under: ['warn', 'i-warn', A.need ? `Needs ${plural(A.need, 'more dimension')}` : 'Partly from your drawing', A.need ? 'Missing sizes are amber on the sketch.' : 'Freeform curves take their size from the drawing.'],
@@ -2511,7 +2643,7 @@ function openReview() {
       <button class="btn ${A.need || A.over ? '' : 'primary'} grow" id="rv-go" ${canBuild ? '' : 'disabled'}><svg class="i"><use href="#i-check"/></svg>${A.status === 'full' ? 'Confirm &amp; create' : 'Create anyway'}</button>
     </div>`, { kind: 'review' });
   const fieldsFor = () => {
-    if (op === 'revolve') return field('op-val', 'Angle', '360', '°');
+    if (op === 'revolve') return field('op-val', centerlines().length ? 'Angle around ℄' : 'Angle around left edge', '360', '°');
     if (op === 'through') return '';
     return field('op-val', op === 'extrude' ? 'Thickness' : 'Depth', store.get(face ? 'napkin.fdepth' : 'napkin.depth') || (face ? '5' : '10'), 'mm');
   };
@@ -2528,7 +2660,7 @@ function openReview() {
         if (regions.length && (op === 'through' || v > 0)) objs.push(solidMesh(featureGeometry(face, regions, op, v, part), op === 'add' ? tok.ok : tok.danger, { opacity: op === 'add' ? 0 : 0.85, edge: op === 'add' ? tok.ok : tok.danger }));
         previewSet(objs);
       } else {
-        const r = baseRecipe(op, v > 0 ? v : op === 'revolve' ? 360 : 10); if (!r) return;
+        const r = baseRecipe(op, v > 0 ? v : op === 'revolve' ? 360 : 10); if (!r || r.error) return;
         previewSet([solidMesh(buildGeometry(r), COLORS[doc.parts.length % COLORS.length], { double: r.kind === 'revolve' })]);
       }
     } catch (err) { console.error(err); }
@@ -2553,9 +2685,18 @@ function openReview() {
 }
 function partName(id) { const p = doc.parts.find((q) => q.id === id); return p ? p.name : 'part'; }
 function consumeSketch() { doc.sketch = doc.stash || newSketch(); doc.stash = null; sel = null; focus = null; live.handwriting = []; updateFaceChip(); }
+let lastRevolveHint = '';
+function suggestRevolve() {
+  const cl = centerlines()[0]; if (!cl || doc.sketch.plane || mode !== 'sketch') return;
+  const prof = shapes().filter((q) => !isCL(q) && isClosedShape(q)); if (!prof.length) return;
+  const key = cl.id + ':' + prof.map((q) => q.id).join(','); if (key === lastRevolveHint) return;
+  const r = baseRecipe('revolve', 360); if (!r || r.error) return; lastRevolveHint = key;
+  setTimeout(() => { if (!sheet.classList.contains('open')) toast('Revolve this profile around the centerline?', [{ label: 'Revolve', fn: () => openReview('revolve') }], 8000); }, 700);
+}
 function confirmSketch(op, v) {
   if (doc.sketch.plane) return featureFromSketch(op, v);
   const r = baseRecipe(op, v); if (!r) return toast(op === 'extrude' ? 'Extrude needs a closed outline.' : 'Draw a profile first.');
+  if (r.error) return toast(r.error);
   createFromSketch(r, op === 'extrude' ? 'Extrusion' : 'Revolve');
 }
 
@@ -2643,6 +2784,11 @@ function buildGeometry(r) {
       g = new THREE.ExtrudeGeometry(shapesT, { depth: r.depth, bevelEnabled: false, curveSegments: 48 }); g.rotateX(-Math.PI / 2); break;
     }
     case 'revolve': {
+      if (r.loops) { // around a centerline: every outline and hole spun, merged into one solid
+        const parts = r.loops.map((l) => { const pts = l.pts.map((q) => new THREE.Vector2(q[0], q[1])); if ((signedArea(l.pts) < 0) !== !!l.hole) pts.reverse(); pts.push(pts[0].clone()); return new THREE.LatheGeometry(pts, 96, 0, (r.angle * Math.PI) / 180).toNonIndexed(); });
+        const arr = new Float32Array(parts.reduce((t, q) => t + q.getAttribute('position').array.length, 0)); let o = 0; parts.forEach((q) => { arr.set(q.getAttribute('position').array, o); o += q.getAttribute('position').array.length; q.dispose(); });
+        g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(arr, 3)); g.computeVertexNormals(); break;
+      }
       const pts = r.profile.map((p) => new THREE.Vector2(Math.max(p[0], 0), p[1]));
       if (r.closed) { if (signedArea(r.profile) < 0) pts.reverse(); pts.push(pts[0].clone()); }
       g = new THREE.LatheGeometry(pts, 96, 0, (r.angle * Math.PI) / 180);
@@ -3030,6 +3176,7 @@ const HINTS = {
   dim: '<b>Write a number</b> next to a line, or <b>60°</b> in a corner. <b>Drag from one line to the next</b> for the angle between them, or <b>from a hole to an edge</b> for its distance.',
   select: '<b>Drag</b> points, lines or shapes to move them; relations (H, V, ∥, ⊥, =) hold. <b>Tap</b> one to edit its size and relations.',
   line: '<b>Drag</b> to draw a straight line. Ends join up; close the loop to make an outline.',
+  cline: '<b>Drag</b> to draw a centerline. Revolve around it or mirror across it. In Draw mode, three short dashes in a row make one too.',
   rect: '<b>Drag</b> from corner to corner. Snaps to the grid.',
   circle: '<b>Drag</b> from the center outward.',
   erase: '<b>Tap or swipe</b> over a shape or a dimension to delete it. Tap the eraser again to go back.',
@@ -3102,6 +3249,7 @@ function showHelp() {
   <div class="help"><ol>
     <li><b>Draw</b> with your finger. Wobbly lines straighten and snap to 90° and 45°; end where you started to close an outline. Circles inside become holes.</li>
     <li><b>Write a number</b> right next to an edge, e.g. <b>80</b>. The first number scales the whole sketch; later ones reshape it. Or just <b>tap</b> an edge or circle and write or type the size.</li>
+    <li><b>Centerline:</b> use the Centerline tool, or draw three short dashes in a row. Draw the half profile of a round part beside it; corners near it snap onto it, and a line from the axis back to the axis closes itself. Then tap <b>Revolve</b>. Tap the centerline to <b>mirror</b> shapes across it.</li>
     <li><b>Fillets and chamfers:</b> draw a small curve across a corner to round it, or a short straight cut to bevel it. Or tap a corner and choose <b>Fillet…</b> or <b>Chamfer…</b>; an outline's sheet has <b>Round corners…</b> for all of them. Sizes refer to the sharp corner.</li>
     <li><b>Relations</b> such as horizontal, vertical, parallel, perpendicular and equal are added as you draw. See and edit them in Select mode, or tap a line and choose <b>Relations</b>.</li>
     <li><b>Angles:</b> tap a corner, write the angle with a degree sign inside it (e.g. <b>60°</b>), or in Dimension mode drag from one line to the line it meets.</li>
@@ -3210,7 +3358,7 @@ showHint(HINTS.draw, 8000);
 if (!saved) setTimeout(() => toast('Example loaded. Tap ⋯ › New project to start your own.', null, 5000), 600);
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http') && !window.claude && window.top === window.self) navigator.serviceWorker.register('sw.js').catch(() => {});
-window.__napkin = { setCorner, setAllCorners, cornerGeom, treatedPts, editCornerTreat, setVertexAngle, cornerAngle, solveAll, change, inferRelations, addRelation, dragAction, rels, editVertexAngle, commit, _T: T, THREE, doc, Digits, recognize, setEdgeDim, buildRegions, analyzeSketch, view: () => view, toS, toW, exportModel, toSTL, runBoolean, computeFace, startFaceSketch, featureFromSketch, openReview, get dimHits() { return dimHits; }, get parts() { return doc.parts; }, get sketch() { return doc.sketch; }, get selFace() { return selFace; }, project(v) { const r = $('#view3d').getBoundingClientRect(); const q = new THREE.Vector3(...v).project(T.camera); return [r.left + (q.x + 1) / 2 * r.width, r.top + (1 - q.y) / 2 * r.height]; } };
+window.__napkin = { mirrorAcross, baseRecipe, centerlines, trackDash, openReview, setCorner, setAllCorners, cornerGeom, treatedPts, editCornerTreat, setVertexAngle, cornerAngle, solveAll, change, inferRelations, addRelation, dragAction, rels, editVertexAngle, commit, _T: T, THREE, doc, Digits, recognize, setEdgeDim, buildRegions, analyzeSketch, view: () => view, toS, toW, exportModel, toSTL, runBoolean, computeFace, startFaceSketch, featureFromSketch, openReview, get dimHits() { return dimHits; }, get parts() { return doc.parts; }, get sketch() { return doc.sketch; }, get selFace() { return selFace; }, project(v) { const r = $('#view3d').getBoundingClientRect(); const q = new THREE.Vector3(...v).project(T.camera); return [r.left + (q.x + 1) / 2 * r.width, r.top + (1 - q.y) / 2 * r.height]; } };
 </script>
 </body>
 </html>
