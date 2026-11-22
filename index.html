@@ -297,6 +297,7 @@ details.more[open] summary { color: var(--ink); }
       <button data-act="save"><svg class="i"><use href="#i-download"/></svg>Save project (.json)</button>
       <hr>
       <button data-act="stl"><svg class="i"><use href="#i-download"/></svg>Export STL (3D print)</button>
+      <button data-act="step"><svg class="i"><use href="#i-download"/></svg>Export STEP (CAD)</button>
       <button data-act="obj"><svg class="i"><use href="#i-download"/></svg>Export OBJ</button>
       <hr>
       <button data-act="help"><svg class="i"><use href="#i-help"/></svg>How it works</button>
@@ -325,6 +326,7 @@ details.more[open] summary { color: var(--ink); }
     <span class="tool sep" aria-hidden="true"></span>
     <button class="tool" id="btn-to-sketch"><svg class="i"><use href="#i-pen"/></svg>Sketch</button>
     <button class="tool" id="btn-stl"><svg class="i"><use href="#i-download"/></svg>STL</button>
+    <button class="tool" id="btn-step"><svg class="i"><use href="#i-download"/></svg>STEP</button>
   </nav>
 </div>
 <input type="file" id="file-photo" accept="image/*" hidden>
@@ -727,7 +729,7 @@ function cornerGeom(sh) {
     const a0 = Math.atan2(p1[1] - cen[1], p1[0] - cen[0]), a1 = Math.atan2(p2[1] - cen[1], p2[0] - cen[0]);
     const d = Math.atan2(Math.sin(a1 - a0), Math.cos(a1 - a0)); const seg = Math.max(2, Math.ceil(Math.abs(d) / (Math.PI / 24)));
     const pts = Array.from({ length: seg + 1 }, (_, k) => [cen[0] + r * Math.cos(a0 + (d * k) / seg), cen[1] + r * Math.sin(a0 + (d * k) / seg)]);
-    return { p1, p2, pts, clamped, spec, t, bis, r, mid: V.sub(cen, V.mul(bis, r)) };
+    return { p1, p2, pts, clamped, spec, t, bis, r, cen, mid: V.sub(cen, V.mul(bis, r)) };
   });
 }
 function treatedPts(sh) { if (sh.type !== 'poly' || !sh.corners || !Object.keys(sh.corners).length) return sh.pts; return cornerGeom(sh).flatMap((g) => g.pts); }
@@ -2615,7 +2617,20 @@ function baseRecipe(op, val) {
   return { kind: 'revolve', angle: val, closed: isClosedShape(target), profile: pts.map((p) => [p[0] - b.x0, p[1] - b.y0]) };
 }
 function regionsCenter(regions) { const b = bbox(regions.flatMap((r) => r.outline)); return [(b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2]; }
-function shapeRecipe(sh, c) { return sh.type === 'circle' ? { type: 'circle', c: V.sub(sh.c, c), r: sh.r } : { type: 'poly', pts: treatedPts(sh).map((p) => V.sub(p, c)) }; }
+function shapeRecipe(sh, c) {
+  if (sh.type === 'circle') return { type: 'circle', c: V.sub(sh.c, c), r: sh.r };
+  const out = { type: 'poly', pts: treatedPts(sh).map((p) => V.sub(p, c)) };
+  if (sh.closed && hasAnyCorner(sh)) { // exact lines and arcs, for STEP export
+    const G = cornerGeom(sh), n = sh.pts.length, sub = (p) => V.sub(p, c); const segs = [];
+    for (let i = 0; i < n; i++) {
+      const g = G[i];
+      if (g.pts.length > 1) segs.push(g.spec.t === 'f' ? { t: 'a', c: sub(g.cen), r: g.r, p: sub(g.p1), q: sub(g.p2) } : { t: 'l', p: sub(g.p1), q: sub(g.p2) });
+      segs.push({ t: 'l', p: sub(g.p2), q: sub(G[(i + 1) % n].p1) });
+    }
+    out.segs = segs.filter((q) => q.t !== 'l' || V.dist(q.p, q.q) > 1e-9);
+  }
+  return out;
+}
 
 function openReview(prefOp) {
   if (!shapes().length) { toast('Draw something first.'); return; }
@@ -2992,6 +3007,7 @@ function openPartSheet(p) {
     <div class="row">
       <button class="btn sm" id="pp-dup"><svg class="i"><use href="#i-copy"/></svg>Duplicate</button>
       <button class="btn sm" id="pp-stl"><svg class="i"><use href="#i-download"/></svg>STL</button>
+      <button class="btn sm" id="pp-step"><svg class="i"><use href="#i-download"/></svg>STEP</button>
       <button class="btn sm danger" id="pp-del"><svg class="i"><use href="#i-trash"/></svg>Delete</button>
     </div>`, { kind: 'part', id: p.id });
   if (f) $('#pp-sketch').onclick = () => startFaceSketch(p, f);
@@ -3009,6 +3025,7 @@ function openPartSheet(p) {
   $('#pp-dup').onclick = () => { const s2 = partSize(p); const cp = addPart({ ...partData(p), id: uid(), name: p.name + ' copy', recipe: JSON.parse(JSON.stringify(p.recipe)), pos: [p.pos[0] + s2.x + 5, p.pos[1], p.pos[2]], rot: p.rot.slice() }); commit(); refresh3DSelection(); openPartSheet(cp); };
   $('#pp-del').onclick = () => { clearFace(); removePart(p); sel3 = null; commit(); closeSheet(); T.dirty = true; toast(`Deleted ${p.name}`, [{ label: 'Undo', fn: undo }]); };
   $('#pp-stl').onclick = () => exportModel('stl', [p]);
+  $('#pp-step').onclick = () => exportModel('step', [p]);
 }
 function dropToFloor(p, doCommit) { const b = new THREE.Box3().setFromObject(p.mesh); p.pos[1] -= b.min.y; applyTransform(p); if (doCommit) commit(); }
 
@@ -3119,11 +3136,171 @@ function toOBJ(list) {
   }
   return out;
 }
+/* =========================================================================
+   STEP export (ISO 10303-21, AP214): exact solids for extrusions, boxes and cylinders; flat-faced solids otherwise
+   ========================================================================= */
+function stepReal(v) { if (Math.abs(v) < 1e-12) v = 0; let t = (+v.toPrecision(12)).toString().toUpperCase(); if (t.includes('E')) { const [m, e] = t.split('E'); t = (m.includes('.') ? m : m + '.') + 'E' + e; } else if (!t.includes('.')) t += '.'; return t; }
+function stepFile(name, parts) {
+  const L = []; let n = 0; const add = (t) => { L.push(`#${++n}=${t};`); return `#${n}`; };
+  const P = (p) => add(`CARTESIAN_POINT('',(${p.map(stepReal).join(',')}))`);
+  const D = (d) => { const l = Math.hypot(...d) || 1; return add(`DIRECTION('',(${d.map((x) => stepReal(x / l)).join(',')}))`); };
+  const AX = (o, z, x) => add(`AXIS2_PLACEMENT_3D('',${P(o)},${D(z)},${D(x)})`);
+  const LINE = (a, b) => { const d = b.map((x, i) => x - a[i]); const len = Math.hypot(...d); return add(`LINE('',${P(a)},${add(`VECTOR('',${D(d)},${stepReal(len)})`)})`); };
+  const solids = [], shells = [];
+  for (const part of parts) {
+    const r = part.recipe; part.mesh.updateMatrixWorld(true); const M = part.mesh.matrixWorld;
+    const zUp = (v) => [v.x, -v.z, v.y];
+    const W = (sx, sy, z) => zUp(new THREE.Vector3(sx, z, -sy).applyMatrix4(M));
+    const Wd = (dx, dy, dz) => zUp(new THREE.Vector3(dx, dz, -dy).transformDirection(M));
+    let prof = null, depth = 0;
+    if (r.kind === 'extrude') { prof = r.regions; depth = r.depth; }
+    else if (r.kind === 'box') { prof = [{ outer: { type: 'poly', pts: [[-r.w / 2, -r.d / 2], [r.w / 2, -r.d / 2], [r.w / 2, r.d / 2], [-r.w / 2, r.d / 2]] }, holes: [] }]; depth = r.h; }
+    else if (r.kind === 'cyl') { prof = [{ outer: { type: 'circle', c: [0, 0], r: r.d / 2 }, holes: [] }]; depth = r.h; }
+    if (prof) for (const rg of prof) solids.push(stepExtrudeSolid(rg, depth, { add, P, D, AX, LINE, W, Wd }));
+    else { const res = stepFacetedShell(collectTris([part]), { add, P, D, AX }); (res.closed ? solids : shells).push(res.ref); }
+  }
+  const ctx = '#C';
+  const head = ["ISO-10303-21;", "HEADER;", "FILE_DESCRIPTION(('Napkin CAD model'),'2;1');",
+    `FILE_NAME('${name.replace(/'/g, '')}','${new Date().toISOString().slice(0, 19)}',(''),(''),'Napkin CAD','Napkin CAD','');`,
+    "FILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }'));", 'ENDSEC;', 'DATA;'];
+  const app = add("APPLICATION_CONTEXT('core data for automotive mechanical design processes')");
+  add(`APPLICATION_PROTOCOL_DEFINITION('international standard','automotive_design',2000,${app})`);
+  const pctx = add(`PRODUCT_CONTEXT('',${app},'mechanical')`);
+  const prod = add(`PRODUCT('${name.replace(/'/g, '')}','${name.replace(/'/g, '')}','',(${pctx}))`);
+  add(`PRODUCT_RELATED_PRODUCT_CATEGORY('part',$,(${prod}))`);
+  const pdf = add(`PRODUCT_DEFINITION_FORMATION('','',${prod})`);
+  const pdc = add(`PRODUCT_DEFINITION_CONTEXT('part definition',${app},'design')`);
+  const pd = add(`PRODUCT_DEFINITION('design','',${pdf},${pdc})`);
+  const pds = add(`PRODUCT_DEFINITION_SHAPE('','',${pd})`);
+  const lu = add('(LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(.MILLI.,.METRE.))');
+  const au = add('(NAMED_UNIT(*) PLANE_ANGLE_UNIT() SI_UNIT($,.RADIAN.))');
+  const su = add('(NAMED_UNIT(*) SI_UNIT($,.STERADIAN.) SOLID_ANGLE_UNIT())');
+  const unc = add(`UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(1.E-05),${lu},'distance_accuracy_value','confusion accuracy')`);
+  const gctx = add(`(GEOMETRIC_REPRESENTATION_CONTEXT(3) GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((${unc})) GLOBAL_UNIT_ASSIGNED_CONTEXT((${lu},${au},${su})) REPRESENTATION_CONTEXT('Context3D','3D Context'))`);
+  const origin = AX([0, 0, 0], [0, 0, 1], [1, 0, 0]);
+  const rep1 = add(`ADVANCED_BREP_SHAPE_REPRESENTATION('',(${[origin, ...solids].join(',')}),${gctx})`);
+  add(`SHAPE_DEFINITION_REPRESENTATION(${pds},${rep1})`);
+  if (shells.length) { // shapes whose triangles don't close up are written as surfaces
+    const sbsm = add(`SHELL_BASED_SURFACE_MODEL('',(${shells.join(',')}))`);
+    const rep2 = add(`MANIFOLD_SURFACE_SHAPE_REPRESENTATION('',(${origin},${sbsm}),${gctx})`);
+    add(`SHAPE_REPRESENTATION_RELATIONSHIP('','',${rep1},${rep2})`);
+  }
+  void ctx;
+  return [...head, ...L, 'ENDSEC;', 'END-ISO-10303-21;', ''].join('\n');
+}
+// One extruded region as an exact solid: planar top/bottom, planar sides for lines, cylindrical sides for arcs and circles.
+function stepExtrudeSolid(rg, depth, S) {
+  const { add, P, AX, LINE, W, Wd } = S;
+  const toSegs = (sr) => {
+    if (sr.type === 'circle') return [{ t: 'c', c: sr.c, r: sr.r }];
+    if (sr.segs) return sr.segs.map((q) => ({ ...q }));
+    return sr.pts.map((p, i) => ({ t: 'l', p, q: sr.pts[(i + 1) % sr.pts.length] }));
+  };
+  const area = (segs) => { if (segs[0].t === 'c') return segs[0].ccw === false ? -1 : 1; let a = 0; for (const q of segs) { const pts = q.t === 'a' ? arcPts(q, 8) : [q.p, q.q]; for (let i = 0; i < pts.length - 1; i++) a += pts[i][0] * pts[i + 1][1] - pts[i + 1][0] * pts[i][1]; } return a; };
+  const arcPts = (q, k) => { const a0 = Math.atan2(q.p[1] - q.c[1], q.p[0] - q.c[0]), a1 = Math.atan2(q.q[1] - q.c[1], q.q[0] - q.c[0]); const d = Math.atan2(Math.sin(a1 - a0), Math.cos(a1 - a0)); return Array.from({ length: k + 1 }, (_, j) => [q.c[0] + q.r * Math.cos(a0 + (d * j) / k), q.c[1] + q.r * Math.sin(a0 + (d * j) / k)]); };
+  const reverse = (segs) => segs.slice().reverse().map((q) => (q.t === 'c' ? { ...q, ccw: !(q.ccw !== false) } : { ...q, p: q.q, q: q.p }));
+  const orient = (segs, ccw) => { if (segs[0].t === 'c') return [{ ...segs[0], ccw }]; return (area(segs) > 0) === ccw ? segs : reverse(segs); };
+  const loops = [orient(toSegs(rg.outer), true), ...rg.holes.map((h) => orient(toSegs(h), false))];
+  const Z = Wd(0, 0, 1), X = Wd(1, 0, 0);
+  const VP = (p) => add(`VERTEX_POINT('',${P(p)})`);
+  const EC = (a, b, curve, sense) => add(`EDGE_CURVE('',${a},${b},${curve},${sense ? '.T.' : '.F.'})`);
+  const OE = (e, f) => `ORIENTED_EDGE('',*,*,${e},${f ? '.T.' : '.F.'})`;
+  const LOOP = (oes) => add(`EDGE_LOOP('',(${oes.map((o) => add(o)).join(',')}))`);
+  const faces = []; const topLoops = [], botLoops = [];
+  for (const segs of loops) {
+    const k = segs.length; const start = (q) => (q.t === 'c' ? [q.c[0] + q.r, q.c[1]] : q.p);
+    const vb = segs.map((q) => VP(W(...start(q), 0))), vt = segs.map((q) => VP(W(...start(q), depth)));
+    const ccwOf = (q) => (q.t === 'c' ? q.ccw !== false : V.cross(V.sub(q.p, q.c), V.sub(q.q, q.c)) > 0);
+    const edge = (q, j, z, vs) => {
+      const a = vs[j], b = vs[(j + 1) % k];
+      if (q.t === 'l') return EC(a, b, LINE(W(...q.p, z), W(...q.q, z)), true);
+      const circ = add(`CIRCLE('',${AX(W(...q.c, z), Z, X)},${stepReal(q.r)})`);
+      return EC(a, b, circ, ccwOf(q));
+    };
+    const eb = segs.map((q, j) => edge(q, j, 0, vb)), et = segs.map((q, j) => edge(q, j, depth, vt));
+    const ev = segs.map((q) => { const s0 = start(q); return EC(vb[segs.indexOf(q)], vt[segs.indexOf(q)], LINE(W(...s0, 0), W(...s0, depth)), true); });
+    segs.forEach((q, j) => {
+      const loop = LOOP([OE(eb[j], true), OE(ev[(j + 1) % k], true), OE(et[j], false), OE(ev[j], false)]);
+      let surf, same = true;
+      if (q.t === 'l') { const e = V.norm(V.sub(q.q, q.p)); surf = add(`PLANE('',${AX(W(...q.p, 0), Wd(e[1], -e[0], 0), Wd(e[0], e[1], 0))})`); }
+      else { surf = add(`CYLINDRICAL_SURFACE('',${AX(W(...q.c, 0), Z, X)},${stepReal(q.r)})`); same = ccwOf(q); }
+      faces.push(add(`ADVANCED_FACE('',(${add(`FACE_OUTER_BOUND('',${loop},.T.)`)}),${surf},${same ? '.T.' : '.F.'})`));
+    });
+    topLoops.push(LOOP(et.map((e) => OE(e, true))));
+    botLoops.push(LOOP(eb.slice().reverse().map((e) => OE(e, false))));
+  }
+  const bounds = (ls) => ls.map((l, j) => add(`${j ? 'FACE_BOUND' : 'FACE_OUTER_BOUND'}('',${l},.T.)`)).join(',');
+  faces.push(add(`ADVANCED_FACE('',(${bounds(topLoops)}),${add(`PLANE('',${AX(W(0, 0, depth), Z, X)})`)},.T.)`));
+  faces.push(add(`ADVANCED_FACE('',(${bounds(botLoops)}),${add(`PLANE('',${AX(W(0, 0, 0), Z.map((v) => -v), X)})`)},.T.)`));
+  return add(`MANIFOLD_SOLID_BREP('',${add(`CLOSED_SHELL('',(${faces.join(',')}))`)})`);
+}
+// Any triangle mesh as a solid of flat faces: coplanar neighbouring triangles become one face (with holes where needed).
+function stepFacetedShell(tris, S) {
+  const { add, P, AX } = S;
+  const keyOf = (p) => p.map((v) => Math.round(v * 1e4)).join(','); const idx = new Map(), pts = [];
+  const vi = (p) => { const k = keyOf(p); if (!idx.has(k)) { idx.set(k, pts.length); pts.push(p); } return idx.get(k); };
+  const T = [];
+  for (const [a, b, c] of tris) {
+    const ia = vi(a), ib = vi(b), ic = vi(c); if (ia === ib || ib === ic || ia === ic) continue;
+    const u = b.map((x, i) => x - a[i]), v = c.map((x, i) => x - a[i]); const nrm = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+    const l = Math.hypot(...nrm); if (l < 1e-10) continue; const nn = nrm.map((x) => x / l);
+    T.push({ v: [ia, ib, ic], n: nn, d: nn[0] * a[0] + nn[1] * a[1] + nn[2] * a[2] });
+  }
+  const dirE = new Map(); T.forEach((t, k) => t.v.forEach((a, j) => dirE.set(a + '>' + t.v[(j + 1) % 3], k)));
+  const parent = T.map((_, k) => k); const find = (k) => (parent[k] === k ? k : (parent[k] = find(parent[k])));
+  T.forEach((t, k) => t.v.forEach((a, j) => { const b = t.v[(j + 1) % 3]; const o = dirE.get(b + '>' + a); if (o != null) { const s2 = T[o]; if (t.n[0] * s2.n[0] + t.n[1] * s2.n[1] + t.n[2] * s2.n[2] > 1 - 1e-7 && Math.abs(t.d - s2.d) < 1e-4) parent[find(k)] = find(o); } }));
+  const groups = new Map(); T.forEach((_, k) => { const g = find(k); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(k); });
+  const VPs = new Map(); const VPof = (i) => { if (!VPs.has(i)) VPs.set(i, add(`VERTEX_POINT('',${P(pts[i])})`)); return VPs.get(i); };
+  const ECs = new Map(); const use = new Map();
+  const ECof = (a, b) => { const k = a < b ? a + '|' + b : b + '|' + a; use.set(k, (use.get(k) || 0) + 1); if (!ECs.has(k)) { const [s0, s1] = a < b ? [a, b] : [b, a]; const d = pts[s1].map((x, i) => x - pts[s0][i]); ECs.set(k, add(`EDGE_CURVE('',${VPof(s0)},${VPof(s1)},${add(`LINE('',${P(pts[s0])},${add(`VECTOR('',${add(`DIRECTION('',(${d.map((x) => stepReal(x / (Math.hypot(...d) || 1))).join(',')}))`)},${stepReal(Math.hypot(...d))})`)})`)},.T.)`)); } return { e: ECs.get(k), fwd: a < b }; };
+  const faceList = [];
+  for (const ks of groups.values()) {
+    const inG = new Set(ks); const nrm = T[ks[0]].n; const out = new Map();
+    for (const k of ks) T[k].v.forEach((a, j) => { const b = T[k].v[(j + 1) % 3]; const o = dirE.get(b + '>' + a); if (o == null || !inG.has(o)) { if (!out.has(a)) out.set(a, []); out.get(a).push(b); } });
+    const loops = [];
+    while (out.size) {
+      const [s0] = out.keys(); const loop = [s0]; let cur = s0;
+      for (let guard = 0; guard < 100000; guard++) { const nx = out.get(cur); const b = nx.shift(); if (!nx.length) out.delete(cur); if (b === s0) break; loop.push(b); cur = b; if (!out.has(cur)) break; }
+      if (loop.length >= 3) loops.push(loop);
+    }
+    if (!loops.length) continue;
+    const ar = (lp) => { let a = [0, 0, 0]; for (let i = 0; i < lp.length; i++) { const p = pts[lp[i]], q = pts[lp[(i + 1) % lp.length]]; a = [a[0] + p[1] * q[2] - p[2] * q[1], a[1] + p[2] * q[0] - p[0] * q[2], a[2] + p[0] * q[1] - p[1] * q[0]]; } return a[0] * nrm[0] + a[1] * nrm[1] + a[2] * nrm[2]; };
+    loops.sort((x, y) => ar(y) - ar(x));
+    faceList.push({ loops, nrm });
+  }
+  // Boolean results leave T-junctions (a corner of one face partway along its neighbour's edge): add those
+  // points to the edge so both faces share the same edges and the shell closes.
+  const used = [...new Set(faceList.flatMap((f) => f.loops.flat()))];
+  const byX = used.map((i) => [pts[i][0], i]).sort((x, y) => x[0] - y[0]);
+  const lowX = (x) => { let lo = 0, hi = byX.length; while (lo < hi) { const m = (lo + hi) >> 1; if (byX[m][0] < x) lo = m + 1; else hi = m; } return lo; };
+  const between = (a, b) => {
+    const A = pts[a], B = pts[b]; const d = B.map((x, i) => x - A[i]); const L2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2]; if (L2 < 1e-12) return [];
+    const x0 = Math.min(A[0], B[0]) - 1e-4, x1 = Math.max(A[0], B[0]) + 1e-4; const hits = [];
+    for (let k = lowX(x0); k < byX.length && byX[k][0] <= x1; k++) {
+      const i = byX[k][1]; if (i === a || i === b) continue; const Q = pts[i];
+      const t = ((Q[0] - A[0]) * d[0] + (Q[1] - A[1]) * d[1] + (Q[2] - A[2]) * d[2]) / L2; if (t <= 1e-6 || t >= 1 - 1e-6) continue;
+      const off = Math.hypot(A[0] + d[0] * t - Q[0], A[1] + d[1] * t - Q[1], A[2] + d[2] * t - Q[2]); if (off < 1e-4) hits.push([t, i]);
+    }
+    return hits.sort((x, y) => x[0] - y[0]).map((h) => h[1]);
+  };
+  for (const f of faceList) f.loops = f.loops.map((lp) => lp.flatMap((a, i) => [a, ...between(a, lp[(i + 1) % lp.length])]));
+  const faces = [];
+  for (const { loops, nrm } of faceList) {
+    const bnds = loops.map((lp, j) => { const oes = lp.map((a, i) => { const { e, fwd } = ECof(a, lp[(i + 1) % lp.length]); return add(`ORIENTED_EDGE('',*,*,${e},${fwd ? '.T.' : '.F.'})`); }); return add(`${j ? 'FACE_BOUND' : 'FACE_OUTER_BOUND'}('',${add(`EDGE_LOOP('',(${oes.join(',')}))`)},.T.)`); });
+    const o = pts[loops[0][0]], o2 = pts[loops[0][1]]; const x = o2.map((v, i) => v - o[i]);
+    faces.push(add(`ADVANCED_FACE('',(${bnds.join(',')}),${add(`PLANE('',${AX(o, nrm, x)})`)},.T.)`));
+  }
+  const closed = [...use.values()].every((c) => c === 2);
+  if (closed) return { closed: true, ref: add(`MANIFOLD_SOLID_BREP('',${add(`CLOSED_SHELL('',(${faces.join(',')}))`)})`) };
+  return { closed: false, ref: add(`OPEN_SHELL('',(${faces.join(',')}))`) };
+}
 async function exportModel(kind, list = doc.parts) {
   if (!list.length) return toast('Nothing to export yet. Make a part first.');
   if (!T.ready) init3D();
   const base = (list.length === 1 ? list[0].name : 'napkin-model').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase() || 'model';
-  if (kind === 'stl') await saveFile(base + '.stl', toSTL(list)); else await saveFile(base + '.obj', toOBJ(list));
+  if (kind === 'stl') await saveFile(base + '.stl', toSTL(list));
+  else if (kind === 'step') await saveFile(base + '.step', stepFile(base, list));
+  else await saveFile(base + '.obj', toOBJ(list));
 }
 const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
 function crc32(u8) { let c = 0xffffffff; for (let i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; }
@@ -3208,6 +3385,7 @@ document.querySelectorAll('#tb-3d [data-add]').forEach((b) => (b.onclick = () =>
 $('#mode-sketch').onclick = () => setMode('sketch'); $('#mode-3d').onclick = () => setMode('3d');
 $('#btn-to-sketch').onclick = () => setMode('sketch');
 $('#btn-stl').onclick = () => exportModel('stl');
+$('#btn-step').onclick = () => exportModel('step');
 $('#btn-review').onclick = () => { flushInk(); openReview(); };
 $('#status-chip').onclick = () => { flushInk(); openReview(); };
 $('#face-chip').onclick = () => exitFaceSketch();
@@ -3237,6 +3415,7 @@ menu.addEventListener('click', (e) => {
   if (act === 'open') $('#file-open').click();
   if (act === 'stl') exportModel('stl');
   if (act === 'obj') exportModel('obj');
+  if (act === 'step') exportModel('step');
   if (act === 'help') showHelp();
 });
 $('#file-open').onchange = async (e) => {
@@ -3358,7 +3537,7 @@ showHint(HINTS.draw, 8000);
 if (!saved) setTimeout(() => toast('Example loaded. Tap ⋯ › New project to start your own.', null, 5000), 600);
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http') && !window.claude && window.top === window.self) navigator.serviceWorker.register('sw.js').catch(() => {});
-window.__napkin = { mirrorAcross, baseRecipe, centerlines, trackDash, openReview, setCorner, setAllCorners, cornerGeom, treatedPts, editCornerTreat, setVertexAngle, cornerAngle, solveAll, change, inferRelations, addRelation, dragAction, rels, editVertexAngle, commit, _T: T, THREE, doc, Digits, recognize, setEdgeDim, buildRegions, analyzeSketch, view: () => view, toS, toW, exportModel, toSTL, runBoolean, computeFace, startFaceSketch, featureFromSketch, openReview, get dimHits() { return dimHits; }, get parts() { return doc.parts; }, get sketch() { return doc.sketch; }, get selFace() { return selFace; }, project(v) { const r = $('#view3d').getBoundingClientRect(); const q = new THREE.Vector3(...v).project(T.camera); return [r.left + (q.x + 1) / 2 * r.width, r.top + (1 - q.y) / 2 * r.height]; } };
+window.__napkin = { stepFile, mirrorAcross, baseRecipe, centerlines, trackDash, openReview, setCorner, setAllCorners, cornerGeom, treatedPts, editCornerTreat, setVertexAngle, cornerAngle, solveAll, change, inferRelations, addRelation, dragAction, rels, editVertexAngle, commit, _T: T, THREE, doc, Digits, recognize, setEdgeDim, buildRegions, analyzeSketch, view: () => view, toS, toW, exportModel, toSTL, runBoolean, computeFace, startFaceSketch, featureFromSketch, openReview, get dimHits() { return dimHits; }, get parts() { return doc.parts; }, get sketch() { return doc.sketch; }, get selFace() { return selFace; }, project(v) { const r = $('#view3d').getBoundingClientRect(); const q = new THREE.Vector3(...v).project(T.camera); return [r.left + (q.x + 1) / 2 * r.width, r.top + (1 - q.y) / 2 * r.height]; } };
 </script>
 </body>
 </html>

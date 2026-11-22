@@ -1,5 +1,5 @@
 // Offline cache for Napkin CAD. Bump VERSION when files change.
-const VERSION = 'napkin-v9';
+const VERSION = 'napkin-v10';
 const FILES = [
   './', './index.html', './manifest.webmanifest', './icon.svg',
   './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png',

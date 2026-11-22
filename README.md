@@ -43,7 +43,8 @@ Everything runs in the browser, works offline once loaded, and can be installed 
 - Extrude (holes cut through) or Revolve (half-profile around its left edge).
 - Tap a part, then tap one of its **flat faces** and choose **Sketch on this face**. The face outline appears as a reference; draw, dimension (positions are measured from the face edges), review, then **Add material**, **Cut** or **Cut through**.
 - Boxes, cylinders, spheres, cones; drag to move; 90° rotations; **Cut away / Join / Keep overlap** between parts.
-- Export **STL** (Z-up, millimetres) or **OBJ**; save and open projects as `.json`.
+- Export **STEP** for CAD programs (Fusion 360, SolidWorks, FreeCAD, Onshape): extrusions, boxes and cylinders become exact solids (flat faces, true cylindrical holes and fillet arcs); revolved, spherical and combined parts become solids made of flat faces.
+- Export **STL** (Z-up, millimetres) for 3D printing or **OBJ**; save and open projects as `.json`.
 
 **Gestures**
 - **Scribble** back and forth over a shape or a dimension to delete it; it turns red before you lift.
